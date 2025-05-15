@@ -1,2 +1,7 @@
 /campus_connect/__pycache__/
 db.sqlite3
+/bloodbank/__pycache__
+/accounts/__pycache__
+
+**/*.pyc
+**/__pycache__/
