@@ -9,7 +9,7 @@ from .views import (
 
 urlpatterns = [
     path('bloodgroups/', BloodGroupView.as_view(), name='bloodgroup-list'),
-    path('bloodgroups/<int:pk>/', BloodGroupView.as_view(), name='bloodgroup-detail'),
+    path('bloodgroups/<str:pk>/', BloodGroupView.as_view(), name='bloodgroup-detail'),
     path('donor/register/', DonorRegisterView.as_view(), name='donor-register'),
     path('donor/', DonorProfileView.as_view(), name='donor-profile'),
     path('donor/profile/', DonorProfileView.as_view(), name='donor-profile-explicit'),

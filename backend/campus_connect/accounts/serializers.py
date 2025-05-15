@@ -3,13 +3,14 @@ from django.core.validators import MinLengthValidator
 from .models import User
 from django.urls import reverse
 from bloodbank.models import BloodGroup
+from universities.models import University, AcademicUnit, TeacherDesignation
 
 class UserListSerializer(serializers.ModelSerializer):
     detail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'detail_url']
+        fields = ['id', 'name', 'role', 'university', 'academic_unit', 'detail_url']
 
     def get_detail_url(self, obj):
         request = self.context.get('request')
@@ -17,14 +18,39 @@ class UserListSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(reverse('user-detail', args=[obj.id]))
         return None
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Only include university and academic_unit for student/teacher
+        if instance.role not in ['student', 'teacher']:
+            ret.pop('university', None)
+            ret.pop('academic_unit', None)
+        else:
+            if instance.university:
+                ret['university'] = {
+                    'name': instance.university.name,
+                    'short_name': instance.university.short_name or None
+                }
+            else:
+                ret.pop('university', None)
+            if instance.academic_unit:
+                ret['academic_unit'] = {
+                    'name': str(instance.academic_unit),  # e.g., "Department of Computer Science"
+                    'short_name': instance.academic_unit.short_name or None,
+                    'unit_type': instance.academic_unit.unit_type
+                }
+            else:
+                ret.pop('academic_unit', None)
+        return ret
+
 class UserSerializer(serializers.ModelSerializer):
     blood_group = serializers.CharField(allow_blank=True, required=False)
-    blood_group_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'phone', 'blood_group', 'blood_group_name', 'contact_visibility']
-        read_only_fields = ['blood_group_name']
+        fields = [
+            'id', 'name', 'email', 'phone', 'blood_group', 'contact_visibility',
+            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+        ]
 
     def validate_blood_group(self, value):
         if not value:
@@ -35,38 +61,162 @@ class UserSerializer(serializers.ModelSerializer):
         except BloodGroup.DoesNotExist:
             raise serializers.ValidationError(f"Blood group '{value}' does not exist.")
 
-    def get_blood_group_name(self, obj):
-        return obj.blood_group.name if obj.blood_group else None
+    def validate(self, data):
+        role = data.get('role', self.instance.role if self.instance else 'student')
+        university = data.get('university')
+        academic_unit = data.get('academic_unit')
+        teacher_designation = data.get('teacher_designation')
+        designation = data.get('designation')
+        workplace = data.get('workplace')
+
+        if academic_unit and university:
+            if academic_unit.university != university:
+                raise serializers.ValidationError({
+                    'academic_unit': 'Academic unit must belong to the selected university.'
+                })
+
+        if role in ['student', 'teacher']:
+            if university and not academic_unit:
+                raise serializers.ValidationError({
+                    'academic_unit': 'Must select an academic unit if a university is chosen.'
+                })
+        else:
+            if university or academic_unit:
+                raise serializers.ValidationError({
+                    'university': 'University and academic unit should only be set for students and teachers.',
+                    'academic_unit': 'University and academic unit should only be set for students and teachers.'
+                })
+
+        if role == 'teacher':
+            if teacher_designation is None:
+                raise serializers.ValidationError({
+                    'teacher_designation': 'Designation is required for teachers.'
+                })
+        else:
+            if teacher_designation:
+                raise serializers.ValidationError({
+                    'teacher_designation': 'Designation should only be set for teachers.'
+                })
+
+        if role in ['officer', 'staff']:
+            if not designation:
+                raise serializers.ValidationError({
+                    'designation': 'Designation is required for officers and staff.'
+                })
+            if not workplace:
+                raise serializers.ValidationError({
+                    'workplace': 'Workplace is required for officers and staff.'
+                })
+        else:
+            if designation:
+                raise serializers.ValidationError({
+                    'designation': 'Designation should only be set for officers and staff.'
+                })
+            if workplace:
+                raise serializers.ValidationError({
+                    'workplace': 'Designation should only be set for officers and staff.'
+                })
+
+        return data
 
     def to_representation(self, instance):
-        rep = super().to_representation(instance)
+        ret = super().to_representation(instance)
         request = self.context.get('request')
-        # Skip visibility restrictions for the profile owner or superuser
-        if request and (request.user == instance or request.user.is_superuser):
-            rep['blood_group'] = instance.blood_group.name if instance.blood_group else None
-            return rep
+        role = instance.role
 
-        # Apply visibility restrictions for other users
+        # Include fields based on role
+        if role == 'student':
+            allowed_fields = [
+                'id', 'name', 'email', 'phone', 'blood_group',
+                'contact_visibility', 'role', 'university', 'academic_unit'
+            ]
+        elif role == 'teacher':
+            allowed_fields = [
+                'id', 'name', 'email', 'phone', 'blood_group',
+                'contact_visibility', 'role', 'university', 'academic_unit', 'teacher_designation'
+            ]
+        else:  # officer or staff
+            allowed_fields = [
+                'id', 'name', 'email', 'phone', 'blood_group',
+                'contact_visibility', 'role', 'designation', 'workplace'
+            ]
+
+        # Remove fields not in allowed_fields
+        ret = {k: v for k, v in ret.items() if k in allowed_fields}
+
+        # Convert foreign key fields to names and remove if empty
+        if role in ['student', 'teacher']:
+            if instance.university:
+                ret['university'] = {
+                    'name': instance.university.name,
+                    'short_name': instance.university.short_name or None
+                }
+            else:
+                ret.pop('university', None)
+            if instance.academic_unit:
+                ret['academic_unit'] = {
+                    'name': str(instance.academic_unit),  # e.g., "Department of Computer Science"
+                    'short_name': instance.academic_unit.short_name or None,
+                    'unit_type': instance.academic_unit.unit_type
+                }
+            else:
+                ret.pop('academic_unit', None)
+            if role == 'teacher' and instance.teacher_designation:
+                ret['teacher_designation'] = instance.teacher_designation.name
+            else:
+                ret.pop('teacher_designation', None)
+        if role in ['officer', 'staff']:
+            if not ret.get('designation'):
+                ret.pop('designation', None)
+            if not ret.get('workplace'):
+                ret.pop('workplace', None)
+
+        # Remove empty phone and blood_group
+        if not ret.get('phone'):
+            ret.pop('phone', None)
+        if instance.blood_group:
+            ret['blood_group'] = instance.blood_group.name
+        else:
+            ret.pop('blood_group', None)
+
+        # Apply contact_visibility for non-owner/non-superuser
+        if request and (request.user == instance or request.user.is_superuser):
+            return ret
         visibility = instance.contact_visibility
         if visibility == 'none':
-            rep.pop('email', None)
-            rep.pop('phone', None)
+            ret.pop('email', None)
+            ret.pop('phone', None)
         elif visibility == 'email':
-            rep.pop('phone', None)
+            ret.pop('phone', None)
         elif visibility == 'phone':
-            rep.pop('email', None)
-        rep['blood_group'] = instance.blood_group.name if instance.blood_group else None
-        return rep
+            ret.pop('email', None)
+        return ret
 
-class RegisterSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=50)
-    email = serializers.EmailField()
+class UserProfileSerializer(UserSerializer):
+    class Meta(UserSerializer.Meta):
+        fields = [
+            'id', 'name', 'email', 'phone', 'blood_group', 'contact_visibility',
+            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+        ]
+        read_only_fields = ['email']
+
+class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
         validators=[MinLengthValidator(8, "Password must be at least 8 characters long")]
     )
     confirm_password = serializers.CharField(write_only=True)
     blood_group = serializers.CharField(allow_blank=True, required=False)
+    designation = serializers.CharField(allow_blank=True, required=False, allow_null=False)
+    workplace = serializers.CharField(allow_blank=True, required=False, allow_null=False)
+    phone = serializers.CharField(allow_blank=True, required=False, allow_null=False)
+
+    class Meta:
+        model = User
+        fields = [
+            'name', 'email', 'password', 'confirm_password', 'blood_group', 'phone', 'contact_visibility',
+            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+        ]
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -80,12 +230,88 @@ class RegisterSerializer(serializers.Serializer):
             blood_group = BloodGroup.objects.get(name=value)
             return blood_group
         except BloodGroup.DoesNotExist:
-            raise serializers.ValidationError(f"B Booking group '{value}' does not exist.")
+            raise serializers.ValidationError(f"Blood group '{value}' does not exist.")
+
+    def validate_designation(self, value):
+        if value == '':
+            return None
+        return value
+
+    def validate_workplace(self, value):
+        if value == '':
+            return None
+        return value
+
+    def validate_phone(self, value):
+        if value == '':
+            return None
+        return value
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+
+        role = data.get('role', 'student')
+        university = data.get('university')
+        academic_unit = data.get('academic_unit')
+        teacher_designation = data.get('teacher_designation')
+        designation = data.get('designation')
+        workplace = data.get('workplace')
+
+        if academic_unit and university:
+            if academic_unit.university != university:
+                raise serializers.ValidationError({
+                    'academic_unit': 'Academic unit must belong to the selected university.'
+                })
+
+        if role in ['student', 'teacher']:
+            if university and not academic_unit:
+                raise serializers.ValidationError({
+                    'academic_unit': 'Must select an academic unit if a university is chosen.'
+                })
+        else:
+            if university or academic_unit:
+                raise serializers.ValidationError({
+                    'university': 'University and academic unit should only be set for students and teachers.',
+                    'academic_unit': 'University and academic unit should only be set for students and teachers.'
+                })
+
+        if role == 'teacher':
+            if not teacher_designation:
+                raise serializers.ValidationError({
+                    'teacher_designation': 'Designation is required for teachers.'
+                })
+        else:
+            if teacher_designation:
+                raise serializers.ValidationError({
+                    'teacher_designation': 'Designation should only be set for teachers.'
+                })
+
+        if role in ['officer', 'staff']:
+            if not designation:
+                raise serializers.ValidationError({
+                    'designation': 'Designation is required for officers and staff.'
+                })
+            if not workplace:
+                raise serializers.ValidationError({
+                    'workplace': 'Workplace is required for officers and staff.'
+                })
+        else:
+            if designation:
+                raise serializers.ValidationError({
+                    'designation': 'Designation should only be set for officers and staff.'
+                })
+            if workplace:
+                raise serializers.ValidationError({
+                    'workplace': 'Designation should only be set for officers and staff.'
+                })
+
         return data
+
+    def create(self, validated_data):
+        validated_data.pop('confirm_password')
+        user = User.objects.create_user(**validated_data)
+        return user
 
 class EmailVerificationSerializer(serializers.Serializer):
     email = serializers.EmailField()

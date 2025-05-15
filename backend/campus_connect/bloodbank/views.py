@@ -17,7 +17,7 @@ class BloodGroupView(APIView):
         """
         if pk:
             try:
-                blood_group = BloodGroup.objects.get(pk=pk)
+                blood_group = BloodGroup.objects.get(name=pk)
                 serializer = BloodGroupSerializer(blood_group)
                 return Response(serializer.data, status=status.HTTP_200_OK)
             except BloodGroup.DoesNotExist:

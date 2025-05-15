@@ -12,11 +12,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import LimitOffsetPagination
 from .serializers import (
-    RegisterSerializer, 
-    EmailVerificationSerializer, 
-    LoginSerializer, 
-    UserSerializer,
-    UserListSerializer
+    RegisterSerializer, EmailVerificationSerializer, LoginSerializer, 
+    UserSerializer, UserListSerializer, UserProfileSerializer
 )
 from .models import User, VerificationCode
 
@@ -30,22 +27,11 @@ class RegisterUserView(APIView):
         with transaction.atomic():
             serializer = RegisterSerializer(data=request.data)
             if serializer.is_valid():
-                email = serializer.validated_data['email']
-                name = serializer.validated_data['name']
-                password = serializer.validated_data['password']
-                blood_group = serializer.validated_data.get('blood_group')
+                user = serializer.create(serializer.validated_data)
+                logger.debug(f"Registering user: {user.email}, blood_group: {user.blood_group}")
                 
-                logger.debug(f"Registering user: {email}, blood_group: {blood_group}")
-                
-                user = User.objects.create_user(
-                    email=email,
-                    password=password,
-                    name=name,
-                    blood_group=blood_group
-                )
-
                 code = str(random.randint(100000, 999999))
-                logger.debug(f"\033[33mVerification code for {email}: {code}\033[0m")
+                logger.debug(f"\033[33mVerification code for {user.email}: {code}\033[0m")
 
                 expires_at = timezone.now() + timedelta(minutes=15)
                 VerificationCode.objects.create(
@@ -178,7 +164,7 @@ class UserListView(generics.ListAPIView):
     pagination_class = LimitOffsetPagination
 
 class ProfileView(APIView):
-    serializer_class = UserSerializer
+    serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -190,7 +176,7 @@ class ProfileView(APIView):
     def patch(self, request):
         """Update the authenticated user's profile."""
         user = request.user
-        serializer = UserSerializer(user, data=request.data, partial=True, context={'request': request})
+        serializer = self.serializer_class(user, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             logger.info(f"Profile updated successfully for {user.email}")

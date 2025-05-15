@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'accounts',
     'bloodbank',
+    'universities',
 ]
 
 REST_FRAMEWORK = {

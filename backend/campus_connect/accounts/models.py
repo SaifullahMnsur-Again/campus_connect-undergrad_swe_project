@@ -1,16 +1,17 @@
-from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.db import models
 from django.utils import timezone
-from django.core.validators import RegexValidator
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.db import models
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+from universities.models import University, AcademicUnit, TeacherDesignation
 from bloodbank.models import BloodGroup
 
 class UserManager(BaseUserManager):
-    def create_user(self, email, password, **extra_fields):
+    def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError("Email field must be set")
-        if not password:
-            raise ValueError("Password field must be set")
-        
+            raise ValueError("The Email field must be set")
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -25,31 +26,33 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin):
-    class ContactVisibility(models.TextChoices):
-        NONE = 'none', 'None'
-        EMAIL = 'email', 'Email only'
-        PHONE = 'phone', 'Phone only'
-        BOTH = 'both', 'Email and Phone'
-
-    name = models.CharField(max_length=50)
-    email = models.EmailField(unique=True)
-    phone = models.CharField(
-        max_length=20, 
-        blank=True, 
-        null=True,
-        validators=[RegexValidator(r'^\+?1?\d{9,15}$', "Phone number must be in international format (e.g., +1234567890).")]
+    CONTACT_VISIBILITY = (
+        ('none', 'None'),
+        ('email', 'Email'),
+        ('phone', 'Phone'),
+        ('both', 'Both'),
     )
+    ROLES = (
+        ('student', 'Student'),
+        ('teacher', 'Teacher'),
+        ('officer', 'Officer'),
+        ('staff', 'Staff'),
+    )
+    email = models.EmailField(_('email address'), unique=True)
+    name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=20, blank=True)
     blood_group = models.ForeignKey(BloodGroup, on_delete=models.SET_NULL, null=True, blank=True)
-    contact_visibility = models.CharField(
-        max_length=10,
-        choices=ContactVisibility.choices,
-        default=ContactVisibility.NONE
-    )
-    is_active = models.BooleanField(default=False)
-    is_staff = models.BooleanField(default=False)
-    is_superuser = models.BooleanField(default=False)
+    contact_visibility = models.CharField(max_length=20, choices=CONTACT_VISIBILITY, default='none')
+    role = models.CharField(max_length=20, choices=ROLES, default='student')
+    university = models.ForeignKey(University, on_delete=models.SET_NULL, null=True, blank=True)
+    academic_unit = models.ForeignKey(AcademicUnit, on_delete=models.SET_NULL, null=True, blank=True)
+    teacher_designation = models.ForeignKey(TeacherDesignation, on_delete=models.SET_NULL, null=True, blank=True)
+    designation = models.CharField(max_length=255, blank=True)
+    workplace = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
-    date_joined = models.DateTimeField(default=timezone.now)
+    is_staff = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()
 
@@ -57,10 +60,61 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = ['name']
 
     class Meta:
-        indexes = [
-            models.Index(fields=['email']),
-            models.Index(fields=['name']),
-        ]
+        ordering = ['email']
+
+    def __str__(self):
+        return self.email
+
+    def clean(self):
+        super().clean()
+        if self.academic_unit and self.university:
+            if self.academic_unit.university != self.university:
+                raise ValidationError({
+                    'academic_unit': 'Academic unit must belong to the selected university.'
+                })
+        if self.role in ['student', 'teacher']:
+            if self.university and not self.academic_unit:
+                raise ValidationError({
+                    'academic_unit': 'Must select an academic unit if a university is chosen.'
+                })
+        else:
+            if self.university or self.academic_unit:
+                raise ValidationError({
+                    'university': 'University and academic unit should only be set for students and teachers.',
+                    'academic_unit': 'University and academic unit should only be set for students and teachers.'
+                })
+        if self.role == 'teacher':
+            if not self.teacher_designation:
+                raise ValidationError({
+                    'teacher_designation': 'Designation is required for teachers.'
+                })
+        else:
+            if self.teacher_designation:
+                raise ValidationError({
+                    'teacher_designation': 'Designation should only be set for teachers.'
+                })
+        if self.role in ['officer', 'staff']:
+            if not self.designation:
+                raise ValidationError({
+                    'designation': 'Designation is required for officers and staff.'
+                })
+            if not self.workplace:
+                raise ValidationError({
+                    'workplace': 'Workplace is required for officers and staff.'
+                })
+        else:
+            if self.designation:
+                raise ValidationError({
+                    'designation': 'Designation should only be set for officers and staff.'
+                })
+            if self.workplace:
+                raise ValidationError({
+                    'workplace': 'Workplace should only be set for officers and staff.'
+                })
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.email
