@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'accounts',
     'bloodbank',
     'universities',
+    'lostandfound'
 ]
 
 REST_FRAMEWORK = {
@@ -138,3 +139,6 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = 'accounts.User'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
