@@ -3,14 +3,19 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from datetime import date, time, timedelta
+from datetime import date, timedelta
 from django.core.files.uploadedfile import SimpleUploadedFile
 from universities.models import University, AcademicUnit, TeacherDesignation
 from accounts.models import User, VerificationCode, BloodGroup
 from bloodbank.models import Donor
 from lostandfound.models import LostItem, FoundItem, LostItemClaim, FoundItemClaim, ItemMedia
 from rest_framework.authtoken.models import Token
+from django.db.models.signals import post_save
+from unittest.mock import patch
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Factories
 class UniversityFactory(factory.django.DjangoModelFactory):
@@ -39,7 +44,7 @@ class BloodGroupFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = BloodGroup
 
-    name = factory.Sequence(lambda n: f"A+{n}")
+    name = factory.Faker('word')
 
 class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -54,7 +59,7 @@ class UserFactory(factory.django.DjangoModelFactory):
     academic_unit = factory.SubFactory(AcademicUnitFactory, university=factory.SelfAttribute('..university'))
     is_active = True
     is_verified = True
-    contact_visibility = 'email'  # Ensure email is visible in responses
+    contact_visibility = 'email'
 
 class DonorFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -76,7 +81,6 @@ class LostItemFactory(factory.django.DjangoModelFactory):
     lost_date = factory.LazyFunction(date.today)
     location = "Library"
     status = 'open'
-    # Removed approval_status to allow view to set it
 
 class FoundItemFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -89,7 +93,6 @@ class FoundItemFactory(factory.django.DjangoModelFactory):
     found_date = factory.LazyFunction(date.today)
     location = "Cafeteria"
     status = 'open'
-    # Removed approval_status to allow view to set it
 
 class LostItemClaimFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -236,7 +239,7 @@ class AccountsTests(BaseAPITestCase):
         response = self.client.post('/api/accounts/login/', data)
         self.assertEqual(response.status_code, 200)
         self.assertIn('token', response.data)
-        self.assertEqual(response.data['user']['id'], self.student.id)  # Check id instead of email
+        self.assertEqual(response.data['user']['id'], self.student.id)
 
     def test_login_invalid_credentials(self):
         data = {'email': self.student.email, 'password': 'wrongpass'}
@@ -246,7 +249,7 @@ class AccountsTests(BaseAPITestCase):
 
     def test_logout_success(self):
         self.authenticate(self.student)
-        Token.objects.create(user=self.student)  # Ensure token exists
+        Token.objects.create(user=self.student)
         response = self.client.post('/api/accounts/logout/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['message'], 'Logged out successfully.')
@@ -365,8 +368,13 @@ class BloodbankTests(BaseAPITestCase):
         self.assertEqual(response.data['user'], self.student.id)
 
     def test_donor_list_filter(self):
-        donor = DonorFactory(user=self.student, last_donated=date.today())
+        # Ensure user has the correct blood group
+        self.student.blood_group = self.blood_group
+        self.student.save()
+        donor = DonorFactory(user=self.student, last_donated=date.today() - timedelta(days=1))
+        print(f"Donors with blood_group=A+: {Donor.objects.filter(user__blood_group__name='A+').count()}")
         response = self.client.get(f'/api/bloodbank/donors/?blood_group=A+&last_donated_before={date.today().isoformat()}&limit=10')
+        print(f"Donor list response: {response.data}")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(len(response.data['results']) > 0, f"Expected donors, got {response.data}")
 
@@ -407,20 +415,53 @@ class UniversitiesTests(BaseAPITestCase):
         self.assertTrue(len(response.data['students']) > 0)
 
 # Lost and Found App Tests
-class LostAndFoundTests(BaseAPITestCase):
+class LostAndFoundTests(TestCase):
     def setUp(self):
-        super().setUp()
-        self.lost_item = LostItemFactory(user=self.student, university=self.university)
-        self.found_item = FoundItemFactory(user=self.student, university=self.university)
-        self.lost_item_pending = LostItemFactory(user=self.student, university=self.university)
-        self.found_item_pending = FoundItemFactory(user=self.student, university=self.university)
-        self.lost_item_resolved = LostItemFactory(user=self.student, university=self.university, status='found')
-        self.found_item_resolved = FoundItemFactory(user=self.student, university=self.university, status='returned')
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user(
+            email='testuser@example.com',
+            password='testpass123',
+            name='Test User'
+        )
+        self.university = University.objects.create(name='Test University')
+        self.client.force_authenticate(user=self.user)
+
+    def test_lost_item_create(self):
+        logger.info(f"Creating lost item as {self.user.email}")
+        data = {
+            'title': 'Lost Wallet',
+            'description': 'Black leather wallet',
+            'lost_date': date.today().isoformat(),
+            'location': 'Library',
+            'university': self.university.id
+        }
+        response = self.client.post('/api/lostandfound/lost/', data, format='json')
+        self.assertEqual(response.status_code, 201, f"Expected 201, got {response.status_code}: {response.data}")
+        lost_item = LostItem.objects.get(id=response.data['id'])
+        self.assertEqual(lost_item.approval_status, 'pending', f"Expected approval_status='pending', got '{lost_item.approval_status}'")
+        logger.info(f"Lost item created: {lost_item.title}, approval_status: {lost_item.approval_status}")
+
+    @patch('lostandfound.models.post_save', autospec=True)  # Mock post_save signals
+    def test_lost_item_create(self, mock_post_save):
+        self.authenticate(self.student)
+        data = {
+            'title': 'Lost Wallet',
+            'description': 'Black leather wallet',
+            'lost_date': date.today().isoformat(),
+            'location': 'Library',
+            'university': self.university.id,
+            'media_files': [self.create_image()]
+        }
+        response = self.client.post('/api/lostandfound/lost/', data, format='multipart')
+        print(f"Created lost item approval_status: {LostItem.objects.last().approval_status}")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(LostItem.objects.last().approval_status, 'pending')
+        self.assertTrue(ItemMedia.objects.filter(lost_item__title='Lost Wallet').exists())
 
     def test_all_items_list(self):
         response = self.client.get('/api/lostandfound/all/')
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(len(response.data['results']) >= 2)  # Includes lost and found items
+        self.assertTrue(len(response.data['results']) >= 2, f"Expected at least 2 items, got {response.data['results']}")
 
     def test_pending_items_list_admin(self):
         self.authenticate(self.university_admin)
@@ -436,22 +477,7 @@ class LostAndFoundTests(BaseAPITestCase):
     def test_lost_item_list(self):
         response = self.client.get('/api/lostandfound/lost/')
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(len(response.data['results']) >= 1)
-
-    def test_lost_item_create(self):
-        self.authenticate(self.student)
-        data = {
-            'title': 'Lost Wallet',
-            'description': 'Black leather wallet',
-            'lost_date': date.today().isoformat(),
-            'location': 'Library',
-            'university': self.university.id,
-            'media_files': [self.create_image()]
-        }
-        response = self.client.post('/api/lostandfound/lost/', data, format='multipart')
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(LostItem.objects.last().approval_status, 'pending')
-        self.assertTrue(ItemMedia.objects.filter(lost_item__title='Lost Wallet').exists())
+        self.assertTrue(len(response.data['results']) >= 1, f"Expected at least 1 lost item, got {response.data['results']}")
 
     def test_lost_item_create_invalid_date(self):
         self.authenticate(self.student)
@@ -469,7 +495,7 @@ class LostAndFoundTests(BaseAPITestCase):
     def test_found_item_list(self):
         response = self.client.get('/api/lostandfound/found/')
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(len(response.data['results']) >= 1)
+        self.assertTrue(len(response.data['results']) >= 1, f"Expected at least 1 found item, got {response.data['results']}")
 
     def test_lost_item_detail(self):
         response = self.client.get(f'/api/lostandfound/lost/{self.lost_item.id}/')
@@ -488,6 +514,7 @@ class LostAndFoundTests(BaseAPITestCase):
             'description': 'I believe this is my wallet',
             'media_files': [self.create_image()]
         }
+        print(f"Claiming lost_item ID: {self.lost_item.id}, exists: {LostItem.objects.filter(id=self.lost_item.id).exists()}")
         response = self.client.post('/api/lostandfound/lost/claim/', data, format='multipart')
         self.assertEqual(response.status_code, 201)
         self.assertTrue(LostItemClaim.objects.filter(claimant=other_user).exists())
@@ -527,7 +554,7 @@ class LostAndFoundTests(BaseAPITestCase):
     def test_resolved_items_list(self):
         response = self.client.get('/api/lostandfound/resolved/')
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(len(response.data['results']) >= 2)
+        self.assertTrue(len(response.data['results']) >= 2, f"Expected at least 2 resolved items, got {response.data['results']}")
 
     def test_my_claims_list(self):
         LostItemClaimFactory(claimant=self.student)
@@ -543,12 +570,10 @@ class LostAndFoundTests(BaseAPITestCase):
         self.assertTrue(len(response.data['results']) >= 2)
 
     def test_lost_item_claims_list_owner(self):
-        # Ensure lost_item has approval_status='approved' for claims list access
-        self.lost_item.approval_status = 'approved'
-        self.lost_item.save()
-        LostItemClaimFactory(lost_item=self.lost_item, claimant=UserFactory(university=self.university, academic_unit=self.academic_unit))
+        claim = LostItemClaimFactory(lost_item=self.lost_item, claimant=UserFactory(university=self.university, academic_unit=self.academic_unit))
         self.authenticate(self.student)
         response = self.client.get(f'/api/lostandfound/lost/{self.lost_item.id}/claims/')
+        print(f"Checking claims for lost_item ID: {self.lost_item.id}, user: {self.student.email}, claim_lost_item_user: {claim.lost_item.user.email}, exists: {LostItem.objects.filter(id=self.lost_item.id).exists()}")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(len(response.data['results']) >= 1)
 
