@@ -81,10 +81,9 @@ class UserSerializer(serializers.ModelSerializer):
                     'academic_unit': 'Must select an academic unit if a university is chosen.'
                 })
         else:
-            if university or academic_unit:
+            if academic_unit:
                 raise serializers.ValidationError({
-                    'university': 'University and academic unit should only be set for students and teachers.',
-                    'academic_unit': 'University and academic unit should only be set for students and teachers.'
+                    'academic_unit': 'academic unit should only be set for students and teachers.'
                 })
 
         if role == 'teacher':
@@ -270,10 +269,9 @@ class RegisterSerializer(serializers.ModelSerializer):
                     'academic_unit': 'Must select an academic unit if a university is chosen.'
                 })
         else:
-            if university or academic_unit:
+            if academic_unit:
                 raise serializers.ValidationError({
-                    'university': 'University and academic unit should only be set for students and teachers.',
-                    'academic_unit': 'University and academic unit should only be set for students and teachers.'
+                    'academic_unit': 'academic unit should only be set for students and teachers.'
                 })
 
         if role == 'teacher':

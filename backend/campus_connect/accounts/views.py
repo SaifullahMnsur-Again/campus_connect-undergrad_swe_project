@@ -160,7 +160,7 @@ class LogoutView(APIView):
 class UserListView(generics.ListAPIView):
     queryset = User.objects.all()
     serializer_class = UserListSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     pagination_class = LimitOffsetPagination
 
 class ProfileView(APIView):

@@ -78,7 +78,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                     'academic_unit': 'Must select an academic unit if a university is chosen.'
                 })
         else:
-            if self.university or self.academic_unit:
+            if self.academic_unit:
                 raise ValidationError({
                     'university': 'University and academic unit should only be set for students and teachers.',
                     'academic_unit': 'University and academic unit should only be set for students and teachers.'

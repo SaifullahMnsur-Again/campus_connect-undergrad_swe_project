@@ -103,3 +103,50 @@ class DonorDetailView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Donor.DoesNotExist:
             return Response({'message': 'Donor profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
+
+class DonorListView(APIView):
+    permission_classes = [AllowAny]  # Adjust permissions as needed
+    pagination_class = LimitOffsetPagination
+
+    def get(self, request):
+        """
+        Retrieve a list of donors with optional filtering by blood group, location, and last donated date.
+        Query parameters:
+        - blood_group: Filter by blood group name (e.g., 'A+')
+        - location: Filter by preferred location (partial match)
+        - last_donated_before: Filter donors who last donated before this date (YYYY-MM-DD)
+        - last_donated_after: Filter donors who last donated after this date (YYYY-MM-DD)
+        """
+        # Get query parameters
+        blood_group = request.query_params.get('blood_group', None)
+        location = request.query_params.get('location', None)
+        last_donated_before = request.query_params.get('last_donated_before', None)
+        last_donated_after = request.query_params.get('last_donated_after', None)
+
+        # Start with all donors
+        donors = Donor.objects.all()
+
+        # Apply filters
+        if blood_group:
+            donors = donors.filter(user__blood_group__name=blood_group)
+        if location:
+            donors = donors.filter(preferred_location__icontains=location)
+        if last_donated_before:
+            try:
+                donors = donors.filter(last_donated__lte=last_donated_before)
+            except ValueError:
+                return Response({"message": "Invalid date format for last_donated_before. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        if last_donated_after:
+            try:
+                donors = donors.filter(last_donated__gte=last_donated_after)
+            except ValueError:
+                return Response({"message": "Invalid date format for last_donated_after. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Apply pagination
+        paginator = self.pagination_class()
+        paginated_donors = paginator.paginate_queryset(donors, request)
+
+        # Serialize data
+        serializer = DonorSerializer(paginated_donors, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)

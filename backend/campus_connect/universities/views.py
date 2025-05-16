@@ -40,10 +40,10 @@ class TeacherDesignationListView(APIView):
 class DepartmentInstituteListView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        university_id = request.query_params.get('university_id')
-        if university_id:
+        short_name = request.query_params.get('name')
+        if short_name:
             try:
-                university = University.objects.get(id=university_id)
+                university = University.objects.get(short_name=short_name)
                 departments = AcademicUnit.objects.filter(university=university, unit_type='department')
                 institutes = AcademicUnit.objects.filter(university=university, unit_type='institute')
             except University.DoesNotExist:

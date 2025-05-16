@@ -1,4 +1,3 @@
-
 # Lost and Found App
 
 The **Lost and Found App** is a Django-based RESTful API designed to help university students and staff report, claim, and resolve lost and found items within their campus community. Built with Django REST Framework, it provides a secure, user-friendly platform for managing item posts, uploading media, and tracking resolutions.
@@ -190,9 +189,3 @@ campus_connect/
 5. Open a pull request.
 
 Please follow the coding style (PEP 8) and include tests for new features.
-
-## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Contact
-For issues or questions, open an issue on the repository or contact the project maintainer.

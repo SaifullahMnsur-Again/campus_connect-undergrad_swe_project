@@ -4,7 +4,8 @@ from .views import (
     DonorRegisterView,
     DonorProfileView,
     DonorWithdrawView,
-    DonorDetailView
+    DonorDetailView,
+    DonorListView
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('donor/profile/', DonorProfileView.as_view(), name='donor-profile-explicit'),
     path('donor/withdraw/', DonorWithdrawView.as_view(), name='donor-withdraw'),
     path('donor/<int:pk>/', DonorDetailView.as_view(), name='donor-detail'),
+    path('donors/', DonorListView.as_view(), name='donor-list'),  # New endpoint for donor list
 ]
