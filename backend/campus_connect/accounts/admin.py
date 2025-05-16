@@ -5,8 +5,8 @@ from .models import User, VerificationCode
 class CustomUserAdmin(UserAdmin):
     """Custom admin for User model with additional fields."""
     model = User
-    list_display = ['email', 'name', 'role', 'university', 'is_active', 'is_verified', 'date_joined']
-    list_filter = ['role', 'university', 'is_active', 'is_verified']
+    list_display = ['email', 'name', 'role', 'admin_level', 'university', 'is_active', 'is_verified', 'date_joined']
+    list_filter = ['role', 'admin_level', 'university', 'is_active', 'is_verified']
     search_fields = ['email', 'name']
     ordering = ['email']
     
@@ -15,13 +15,14 @@ class CustomUserAdmin(UserAdmin):
         ('Personal Info', {'fields': ('name', 'phone', 'blood_group', 'contact_visibility')}),
         ('University Info', {'fields': ('role', 'university', 'academic_unit', 'teacher_designation')}),
         ('Officer/Staff Info', {'fields': ('designation', 'workplace')}),
+        ('Admin Info', {'fields': ('admin_level',)}),
         ('Permissions', {'fields': ('is_active', 'is_verified', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
             'fields': (
-                'email', 'name', 'password1', 'password2', 'role',
+                'email', 'name', 'password1', 'password2', 'role', 'admin_level',
                 'university', 'academic_unit', 'teacher_designation',
                 'designation', 'workplace',
                 'phone', 'blood_group', 'contact_visibility',

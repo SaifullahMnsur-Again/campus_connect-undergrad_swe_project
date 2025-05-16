@@ -10,7 +10,7 @@ class UserListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'role', 'university', 'academic_unit', 'detail_url']
+        fields = ['id', 'name', 'role', 'admin_level', 'university', 'academic_unit', 'detail_url']
 
     def get_detail_url(self, obj):
         request = self.context.get('request')
@@ -20,7 +20,6 @@ class UserListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        # Only include university and academic_unit for student/teacher
         if instance.role not in ['student', 'teacher']:
             ret.pop('university', None)
             ret.pop('academic_unit', None)
@@ -34,7 +33,7 @@ class UserListSerializer(serializers.ModelSerializer):
                 ret.pop('university', None)
             if instance.academic_unit:
                 ret['academic_unit'] = {
-                    'name': str(instance.academic_unit),  # e.g., "Department of Computer Science"
+                    'name': str(instance.academic_unit),
                     'short_name': instance.academic_unit.short_name or None,
                     'unit_type': instance.academic_unit.unit_type
                 }
@@ -49,7 +48,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'name', 'email', 'phone', 'blood_group', 'contact_visibility',
-            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+            'role', 'admin_level', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
         ]
 
     def validate_blood_group(self, value):
@@ -68,6 +67,7 @@ class UserSerializer(serializers.ModelSerializer):
         teacher_designation = data.get('teacher_designation')
         designation = data.get('designation')
         workplace = data.get('workplace')
+        admin_level = data.get('admin_level', self.instance.admin_level if self.instance else 'none')
 
         if academic_unit and university:
             if academic_unit.university != university:
@@ -116,6 +116,11 @@ class UserSerializer(serializers.ModelSerializer):
                     'workplace': 'Designation should only be set for officers and staff.'
                 })
 
+        if admin_level == 'university' and not university:
+            raise serializers.ValidationError({
+                'university': 'University is required for university admins.'
+            })
+
         return data
 
     def to_representation(self, instance):
@@ -123,27 +128,24 @@ class UserSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         role = instance.role
 
-        # Include fields based on role
         if role == 'student':
             allowed_fields = [
                 'id', 'name', 'email', 'phone', 'blood_group',
-                'contact_visibility', 'role', 'university', 'academic_unit'
+                'contact_visibility', 'role', 'admin_level', 'university', 'academic_unit'
             ]
         elif role == 'teacher':
             allowed_fields = [
                 'id', 'name', 'email', 'phone', 'blood_group',
-                'contact_visibility', 'role', 'university', 'academic_unit', 'teacher_designation'
+                'contact_visibility', 'role', 'admin_level', 'university', 'academic_unit', 'teacher_designation'
             ]
-        else:  # officer or staff
+        else:
             allowed_fields = [
                 'id', 'name', 'email', 'phone', 'blood_group',
-                'contact_visibility', 'role', 'designation', 'workplace'
+                'contact_visibility', 'role', 'admin_level', 'designation', 'workplace'
             ]
 
-        # Remove fields not in allowed_fields
         ret = {k: v for k, v in ret.items() if k in allowed_fields}
 
-        # Convert foreign key fields to names and remove if empty
         if role in ['student', 'teacher']:
             if instance.university:
                 ret['university'] = {
@@ -154,7 +156,7 @@ class UserSerializer(serializers.ModelSerializer):
                 ret.pop('university', None)
             if instance.academic_unit:
                 ret['academic_unit'] = {
-                    'name': str(instance.academic_unit),  # e.g., "Department of Computer Science"
+                    'name': str(instance.academic_unit),
                     'short_name': instance.academic_unit.short_name or None,
                     'unit_type': instance.academic_unit.unit_type
                 }
@@ -170,7 +172,6 @@ class UserSerializer(serializers.ModelSerializer):
             if not ret.get('workplace'):
                 ret.pop('workplace', None)
 
-        # Remove empty phone and blood_group
         if not ret.get('phone'):
             ret.pop('phone', None)
         if instance.blood_group:
@@ -178,7 +179,6 @@ class UserSerializer(serializers.ModelSerializer):
         else:
             ret.pop('blood_group', None)
 
-        # Apply contact_visibility for non-owner/non-superuser
         if request and (request.user == instance or request.user.is_superuser):
             return ret
         visibility = instance.contact_visibility
@@ -195,7 +195,7 @@ class UserProfileSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
         fields = [
             'id', 'name', 'email', 'phone', 'blood_group', 'contact_visibility',
-            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+            'role', 'admin_level', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
         ]
         read_only_fields = ['email']
 
@@ -209,12 +209,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     designation = serializers.CharField(allow_blank=True, required=False, allow_null=False)
     workplace = serializers.CharField(allow_blank=True, required=False, allow_null=False)
     phone = serializers.CharField(allow_blank=True, required=False, allow_null=False)
+    admin_level = serializers.ChoiceField(choices=User.ADMIN_LEVELS, default='none')
 
     class Meta:
         model = User
         fields = [
             'name', 'email', 'password', 'confirm_password', 'blood_group', 'phone', 'contact_visibility',
-            'role', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
+            'role', 'admin_level', 'university', 'academic_unit', 'teacher_designation', 'designation', 'workplace'
         ]
 
     def validate_email(self, value):
@@ -256,6 +257,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         teacher_designation = data.get('teacher_designation')
         designation = data.get('designation')
         workplace = data.get('workplace')
+        admin_level = data.get('admin_level', 'none')
 
         if academic_unit and university:
             if academic_unit.university != university:
@@ -303,6 +305,11 @@ class RegisterSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'workplace': 'Designation should only be set for officers and staff.'
                 })
+
+        if admin_level == 'university' and not university:
+            raise serializers.ValidationError({
+                'university': 'University is required for university admins.'
+            })
 
         return data
 

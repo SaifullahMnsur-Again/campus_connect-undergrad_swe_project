@@ -6,7 +6,7 @@ from universities.models import University
 from django.utils.translation import gettext_lazy as _
 
 def generate_random_id():
-    return secrets.token_urlsafe(12)  # Generates a 16-char URL-safe random string
+    return secrets.token_urlsafe(12)
 
 class LostItem(models.Model):
     STATUS_CHOICES = (
@@ -14,6 +14,11 @@ class LostItem(models.Model):
         ('claimed', 'Claimed'),
         ('found', 'Found'),
         ('externally_found', 'Externally Found'),
+    )
+    APPROVAL_STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
     )
     
     user = models.ForeignKey(
@@ -32,6 +37,7 @@ class LostItem(models.Model):
     approximate_time = models.TimeField(null=True, blank=True, help_text="Approximate time the item was lost (e.g., 14:30)")
     location = models.CharField(max_length=255, help_text="Specific location within the university")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     resolved_by = models.ForeignKey(
@@ -45,7 +51,7 @@ class LostItem(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['university', 'status']),
+            models.Index(fields=['university', 'status', 'approval_status']),
             models.Index(fields=['user']),
         ]
 
@@ -58,6 +64,11 @@ class FoundItem(models.Model):
         ('claimed', 'Claimed'),
         ('returned', 'Returned'),
         ('externally_returned', 'Externally Returned'),
+    )
+    APPROVAL_STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
     )
     
     user = models.ForeignKey(
@@ -76,6 +87,7 @@ class FoundItem(models.Model):
     approximate_time = models.TimeField(null=True, blank=True, help_text="Approximate time the item was found (e.g., 14:30)")
     location = models.CharField(max_length=255, help_text="Specific location within the university")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     resolved_by = models.ForeignKey(
@@ -89,7 +101,7 @@ class FoundItem(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['university', 'status']),
+            models.Index(fields=['university', 'status', 'approval_status']),
             models.Index(fields=['user']),
         ]
 

@@ -1,8 +1,6 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
-from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from universities.models import University, AcademicUnit, TeacherDesignation
@@ -23,6 +21,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_active', True)
         extra_fields.setdefault('is_verified', True)
+        extra_fields.setdefault('admin_level', 'app')  # Superusers are app-wide admins
         return self.create_user(email, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -38,6 +37,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('officer', 'Officer'),
         ('staff', 'Staff'),
     )
+    ADMIN_LEVELS = (
+        ('none', 'No Admin'),
+        ('university', 'University Admin'),
+        ('app', 'App-Wide Admin'),
+    )
     email = models.EmailField(_('email address'), unique=True)
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20, blank=True)
@@ -52,6 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
+    admin_level = models.CharField(max_length=20, choices=ADMIN_LEVELS, default='none')
     date_joined = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()
@@ -111,13 +116,14 @@ class User(AbstractBaseUser, PermissionsMixin):
                 raise ValidationError({
                     'workplace': 'Workplace should only be set for officers and staff.'
                 })
+        if self.admin_level == 'university' and not self.university:
+            raise ValidationError({
+                'university': 'University is required for university admins.'
+            })
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.email
 
 class VerificationCode(models.Model):
     class Purpose(models.TextChoices):
