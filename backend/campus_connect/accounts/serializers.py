@@ -4,6 +4,7 @@ from .models import User
 from django.urls import reverse
 from bloodbank.models import BloodGroup
 from universities.models import University, AcademicUnit, TeacherDesignation
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 class SimpleUserSerializer(serializers.ModelSerializer):
     detail_url = serializers.SerializerMethodField()
@@ -19,7 +20,7 @@ class SimpleUserSerializer(serializers.ModelSerializer):
         try:
             return request.build_absolute_uri(reverse('accounts:user-detail', kwargs={'pk': obj.pk}))
         except:
-            return None  # Fallback if user-detail is not defined
+            return None
 
 class UserListSerializer(serializers.ModelSerializer):
     detail_url = serializers.SerializerMethodField()
@@ -77,66 +78,13 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Blood group '{value}' does not exist.")
 
     def validate(self, data):
-        role = data.get('role', self.instance.role if self.instance else 'student')
-        university = data.get('university')
-        academic_unit = data.get('academic_unit')
-        teacher_designation = data.get('teacher_designation')
-        designation = data.get('designation')
-        workplace = data.get('workplace')
-        admin_level = data.get('admin_level', self.instance.admin_level if self.instance else 'none')
-
-        if academic_unit and university:
-            if academic_unit.university != university:
-                raise serializers.ValidationError({
-                    'academic_unit': 'Academic unit must belong to the selected university.'
-                })
-
-        if role in ['student', 'teacher']:
-            if university and not academic_unit:
-                raise serializers.ValidationError({
-                    'academic_unit': 'Must select an academic unit if a university is chosen.'
-                })
-        else:
-            if academic_unit:
-                raise serializers.ValidationError({
-                    'academic_unit': 'academic unit should only be set for students and teachers.'
-                })
-
-        if role == 'teacher':
-            if teacher_designation is None:
-                raise serializers.ValidationError({
-                    'teacher_designation': 'Designation is required for teachers.'
-                })
-        else:
-            if teacher_designation:
-                raise serializers.ValidationError({
-                    'teacher_designation': 'Designation should only be set for teachers.'
-                })
-
-        if role in ['officer', 'staff']:
-            if not designation:
-                raise serializers.ValidationError({
-                    'designation': 'Designation is required for officers and staff.'
-                })
-            if not workplace:
-                raise serializers.ValidationError({
-                    'workplace': 'Workplace is required for officers and staff.'
-                })
-        else:
-            if designation:
-                raise serializers.ValidationError({
-                    'designation': 'Designation should only be set for officers and staff.'
-                })
-            if workplace:
-                raise serializers.ValidationError({
-                    'workplace': 'Designation should only be set for officers and staff.'
-                })
-
-        if admin_level == 'university' and not university:
-            raise serializers.ValidationError({
-                'university': 'University is required for university admins.'
-            })
-
+        try:
+            instance = self.instance or User()
+            for key, value in data.items():
+                setattr(instance, key, value)
+            instance.clean()
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict if hasattr(e, 'message_dict') else {'non_field_errors': str(e)})
         return data
 
     def to_representation(self, instance):
@@ -266,67 +214,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
-
-        role = data.get('role', 'student')
-        university = data.get('university')
-        academic_unit = data.get('academic_unit')
-        teacher_designation = data.get('teacher_designation')
-        designation = data.get('designation')
-        workplace = data.get('workplace')
-        admin_level = data.get('admin_level', 'none')
-
-        if academic_unit and university:
-            if academic_unit.university != university:
-                raise serializers.ValidationError({
-                    'academic_unit': 'Academic unit must belong to the selected university.'
-                })
-
-        if role in ['student', 'teacher']:
-            if university and not academic_unit:
-                raise serializers.ValidationError({
-                    'academic_unit': 'Must select an academic unit if a university is chosen.'
-                })
-        else:
-            if academic_unit:
-                raise serializers.ValidationError({
-                    'academic_unit': 'academic unit should only be set for students and teachers.'
-                })
-
-        if role == 'teacher':
-            if not teacher_designation:
-                raise serializers.ValidationError({
-                    'teacher_designation': 'Designation is required for teachers.'
-                })
-        else:
-            if teacher_designation:
-                raise serializers.ValidationError({
-                    'teacher_designation': 'Designation should only be set for teachers.'
-                })
-
-        if role in ['officer', 'staff']:
-            if not designation:
-                raise serializers.ValidationError({
-                    'designation': 'Designation is required for officers and staff.'
-                })
-            if not workplace:
-                raise serializers.ValidationError({
-                    'workplace': 'Workplace is required for officers and staff.'
-                })
-        else:
-            if designation:
-                raise serializers.ValidationError({
-                    'designation': 'Designation should only be set for officers and staff.'
-                })
-            if workplace:
-                raise serializers.ValidationError({
-                    'workplace': 'Designation should only be set for officers and staff.'
-                })
-
-        if admin_level == 'university' and not university:
-            raise serializers.ValidationError({
-                'university': 'University is required for university admins.'
-            })
-
+        try:
+            user = User(**data)
+            user.clean()
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict if hasattr(e, 'message_dict') else {'non_field_errors': str(e)})
         return data
 
     def create(self, validated_data):

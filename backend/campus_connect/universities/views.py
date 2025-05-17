@@ -27,7 +27,6 @@ class AcademicUnitListView(APIView):
 
         queryset = AcademicUnit.objects.all()
         
-        # Filter by unit_type if provided
         if unit_type in ['department', 'institute']:
             queryset = queryset.filter(unit_type=unit_type)
         elif unit_type and unit_type not in ['department', 'institute']:
@@ -36,7 +35,6 @@ class AcademicUnitListView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Filter by university short_name if provided
         if short_name:
             try:
                 university = University.objects.get(short_name=short_name)
@@ -62,16 +60,23 @@ class UniversityUsersView(APIView):
     def get(self, request, university_short_name):
         try:
             university = University.objects.get(short_name=university_short_name.upper())
-            students = User.objects.filter(role='student', university=university)
-            teachers = User.objects.filter(role='teacher', university=university)
-            officers = User.objects.filter(role='officer', university=university)
-            staff = User.objects.filter(role='staff', university=university)
+            users = User.objects.filter(university=university).select_related('university', 'academic_unit')
             response_data = {
-                'students': UserListSerializer(students, many=True, context={'request': request}).data,
-                'teachers': UserListSerializer(teachers, many=True, context={'request': request}).data,
-                'officers': UserListSerializer(officers, many=True, context={'request': request}).data,
-                'staff': UserListSerializer(staff, many=True, context={'request': request}).data
+                'students': [],
+                'teachers': [],
+                'officers': [],
+                'staff': []
             }
+            for user in users:
+                serialized = UserListSerializer(user, context={'request': request}).data
+                if user.role == 'student':
+                    response_data['students'].append(serialized)
+                elif user.role == 'teacher':
+                    response_data['teachers'].append(serialized)
+                elif user.role == 'officer':
+                    response_data['officers'].append(serialized)
+                elif user.role == 'staff':
+                    response_data['staff'].append(serialized)
             return Response(response_data, status=status.HTTP_200_OK)
         except University.DoesNotExist:
-            return Response({"message": "University not found."}, status=status.HTTP_404_NOT_FOUND) 
+            return Response({"message": "University not found."}, status=status.HTTP_404_NOT_FOUND)

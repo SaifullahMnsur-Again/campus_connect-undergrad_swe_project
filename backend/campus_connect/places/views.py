@@ -52,7 +52,7 @@ class PlaceDetailView(APIView):
             serializer = PlaceSerializer(place, context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Place.DoesNotExist:
-            return Response({"error": "Place not found or not approved."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Place not found or awaiting approval. Contact an admin to check status."}, status=status.HTTP_404_NOT_FOUND)
 
 class PlaceUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -85,11 +85,10 @@ class PlaceDeleteView(APIView):
                     {"error": "You do not have permission to delete this place."},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            # Check for child places
             child_places = Place.objects.filter(parent=place)
             if child_places.exists():
                 return Response(
-                    {"error": "Cannot delete place with child places. Delete all child places first."},
+                    {"error": "Cannot delete place with child places. Delete all child places first or use recursive deletion."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             with transaction.atomic():
@@ -97,6 +96,31 @@ class PlaceDeleteView(APIView):
                 place.delete()
                 logger.info(f"Place '{place_name}' deleted by {request.user.email}")
                 return Response({"message": "Place deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except Place.DoesNotExist:
+            return Response({"error": "Place not found."}, status=status.HTTP_404_NOT_FOUND)
+
+class PlaceRecursiveDeleteView(APIView):
+    permission_classes = [IsAuthenticated, UniversityAdminPermission]
+
+    def delete(self, request, pk):
+        try:
+            place = Place.objects.get(pk=pk)
+            if not UniversityAdminPermission().has_object_permission(request, self, place):
+                return Response(
+                    {"error": "You do not have permission to perform recursive deletion."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            with transaction.atomic():
+                def delete_place_and_children(place):
+                    children = Place.objects.filter(parent=place)
+                    for child in children:
+                        delete_place_and_children(child)
+                    place_name = place.name
+                    place.delete()
+                    logger.info(f"Place '{place_name}' deleted recursively by {request.user.email}")
+
+                delete_place_and_children(place)
+                return Response({"message": "Place and all child places deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         except Place.DoesNotExist:
             return Response({"error": "Place not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -109,7 +133,6 @@ class PlaceSearchView(APIView):
         if serializer.is_valid():
             places = Place.objects.filter(approval_status='approved').select_related('university', 'academic_unit', 'place_type')
             
-            # Handle general search with raw query string
             raw_query = serializer.validated_data.get('raw_query')
             logger.debug(f"Processing raw query: {raw_query}")
             if raw_query:
@@ -122,7 +145,6 @@ class PlaceSearchView(APIView):
                 )
                 logger.debug(f"Filtered places count: {places.count()}")
             else:
-                # Handle specific field searches
                 if serializer.validated_data.get('university'):
                     try:
                         university = University.objects.get(name=serializer.validated_data['university'])

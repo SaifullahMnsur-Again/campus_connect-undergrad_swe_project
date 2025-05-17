@@ -4,24 +4,25 @@ from universities.models import University
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from accounts.serializers import SimpleUserSerializer
 
 User = get_user_model()
 
-class SimpleUserSerializer(serializers.ModelSerializer):
-    detail_url = serializers.SerializerMethodField()
+# class SimpleUserSerializer(serializers.ModelSerializer):
+#     detail_url = serializers.SerializerMethodField()
 
-    class Meta:
-        model = User
-        fields = ['id', 'name', 'detail_url']
+#     class Meta:
+#         model = User
+#         fields = ['id', 'name', 'detail_url']
 
-    def get_detail_url(self, obj):
-        request = self.context.get('request')
-        if request is None:
-            return None
-        try:
-            return request.build_absolute_uri(reverse('accounts:user-detail', kwargs={'pk': obj.pk}))
-        except:
-            return None  # Fallback if user-detail is not defined
+#     def get_detail_url(self, obj):
+#         request = self.context.get('request')
+#         if request is None:
+#             return None
+#         try:
+#             return request.build_absolute_uri(reverse('accounts:user-detail', kwargs={'pk': obj.pk}))
+#         except:
+#             return None  # Fallback if user-detail is not defined
 
 class SimpleItemMediaSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
