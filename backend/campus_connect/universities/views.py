@@ -16,18 +16,38 @@ class UniversityListView(APIView):
         serializer = UniversitySerializer(universities, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class DepartmentListView(APIView):
+class AcademicUnitListView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        departments = AcademicUnit.objects.filter(unit_type='department')
-        serializer = AcademicUnitSerializer(departments, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        unit_type = request.query_params.get('unit_type')
+        unit_type = unit_type.lower()
 
-class InstituteListView(APIView):
-    permission_classes = [AllowAny]
-    def get(self, request):
-        institutes = AcademicUnit.objects.filter(unit_type='institute')
-        serializer = AcademicUnitSerializer(institutes, many=True)
+        short_name = request.query_params.get('short_name')
+        short_name = short_name.upper()
+
+        queryset = AcademicUnit.objects.all()
+        
+        # Filter by unit_type if provided
+        if unit_type in ['department', 'institute']:
+            queryset = queryset.filter(unit_type=unit_type)
+        elif unit_type and unit_type not in ['department', 'institute']:
+            return Response(
+                {"message": "Invalid unit_type. Use 'department' or 'institute'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Filter by university short_name if provided
+        if short_name:
+            try:
+                university = University.objects.get(short_name=short_name)
+                queryset = queryset.filter(university=university)
+            except University.DoesNotExist:
+                return Response(
+                    {"message": "University not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        serializer = AcademicUnitSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class TeacherDesignationListView(APIView):
@@ -37,30 +57,11 @@ class TeacherDesignationListView(APIView):
         serializer = TeacherDesignationSerializer(designations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class DepartmentInstituteListView(APIView):
-    permission_classes = [AllowAny]
-    def get(self, request):
-        short_name = request.query_params.get('name')
-        if short_name:
-            try:
-                university = University.objects.get(short_name=short_name)
-                departments = AcademicUnit.objects.filter(university=university, unit_type='department')
-                institutes = AcademicUnit.objects.filter(university=university, unit_type='institute')
-            except University.DoesNotExist:
-                return Response({"message": "University not found."}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            departments = AcademicUnit.objects.filter(unit_type='department')
-            institutes = AcademicUnit.objects.filter(unit_type='institute')
-        return Response({
-            'departments': AcademicUnitSerializer(departments, many=True).data,
-            'institutes': AcademicUnitSerializer(institutes, many=True).data
-        }, status=status.HTTP_200_OK)
-
 class UniversityUsersView(APIView):
     permission_classes = [AllowAny]
     def get(self, request, university_short_name):
         try:
-            university = University.objects.get(short_name=university_short_name)
+            university = University.objects.get(short_name=university_short_name.upper())
             students = User.objects.filter(role='student', university=university)
             teachers = User.objects.filter(role='teacher', university=university)
             officers = User.objects.filter(role='officer', university=university)
@@ -73,4 +74,4 @@ class UniversityUsersView(APIView):
             }
             return Response(response_data, status=status.HTTP_200_OK)
         except University.DoesNotExist:
-            return Response({"message": "University not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "University not found."}, status=status.HTTP_404_NOT_FOUND) 

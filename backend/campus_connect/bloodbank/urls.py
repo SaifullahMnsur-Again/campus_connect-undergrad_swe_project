@@ -8,11 +8,12 @@ from .views import (
     DonorListView,
     BloodRequestListCreateView,
     BloodRequestDetailView,
-    # BloodRequestApprovalView,
     BloodRequestDeleteView,
     BloodRequestDonorRegisterView,
     BloodRequestDonorListView
 )
+
+app_name = 'bloodbank'
 
 urlpatterns = [
     path('bloodgroups/', BloodGroupView.as_view(), name='bloodgroup-list'),
@@ -25,7 +26,6 @@ urlpatterns = [
     path('donors/', DonorListView.as_view(), name='donor-list'),
     path('requests/', BloodRequestListCreateView.as_view(), name='blood-request-list'),
     path('requests/<int:pk>/', BloodRequestDetailView.as_view(), name='blood-request-detail'),
-    # path('requests/<int:pk>/approve/', BloodRequestApprovalView.as_view(), name='blood-request-approve'),
     path('requests/<int:pk>/delete/', BloodRequestDeleteView.as_view(), name='blood-request-delete'),
     path('requests/donor/register/', BloodRequestDonorRegisterView.as_view(), name='blood-request-donor-register'),
     path('requests/<int:pk>/donors/', BloodRequestDonorListView.as_view(), name='blood-request-donor-list'),

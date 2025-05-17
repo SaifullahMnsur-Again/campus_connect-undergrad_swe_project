@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.core.validators import RegexValidator
 from .models import BloodGroup, Donor, BloodRequest, BloodRequestDonor
 from universities.models import University
-from lostandfound.serializers import SimpleUserSerializer
+from accounts.serializers import SimpleUserSerializer
 import logging
 from django.db import models
 

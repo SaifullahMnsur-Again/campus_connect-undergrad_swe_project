@@ -19,7 +19,7 @@ class SimpleUserSerializer(serializers.ModelSerializer):
         if request is None:
             return None
         try:
-            return request.build_absolute_uri(reverse('users:user-detail', kwargs={'pk': obj.pk}))
+            return request.build_absolute_uri(reverse('accounts:user-detail', kwargs={'pk': obj.pk}))
         except:
             return None  # Fallback if user-detail is not defined
 

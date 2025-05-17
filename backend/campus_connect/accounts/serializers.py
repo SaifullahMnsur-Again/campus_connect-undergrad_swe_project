@@ -5,6 +5,22 @@ from django.urls import reverse
 from bloodbank.models import BloodGroup
 from universities.models import University, AcademicUnit, TeacherDesignation
 
+class SimpleUserSerializer(serializers.ModelSerializer):
+    detail_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'name', 'detail_url']
+
+    def get_detail_url(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return None
+        try:
+            return request.build_absolute_uri(reverse('accounts:user-detail', kwargs={'pk': obj.pk}))
+        except:
+            return None  # Fallback if user-detail is not defined
+
 class UserListSerializer(serializers.ModelSerializer):
     detail_url = serializers.SerializerMethodField()
 
@@ -15,7 +31,7 @@ class UserListSerializer(serializers.ModelSerializer):
     def get_detail_url(self, obj):
         request = self.context.get('request')
         if request:
-            return request.build_absolute_uri(reverse('user-detail', args=[obj.id]))
+            return request.build_absolute_uri(reverse('accounts:user-detail', args=[obj.id]))
         return None
 
     def to_representation(self, instance):

@@ -43,7 +43,7 @@ class RegisterUserView(APIView):
 
                 return Response({
                     "message": "User registered, please verify your email.",
-                    "redirect": reverse('verify-email')
+                    "redirect": reverse('accounts:verify-email')
                 }, status=status.HTTP_201_CREATED)
             logger.error(f"Registration failed: {serializer.errors}")
             return Response({
@@ -74,7 +74,7 @@ class EmailVerificationView(APIView):
                     verification.delete()
                     return Response({
                         'message': 'Email verified successfully.',
-                        'redirect': reverse('login')
+                        'redirect': reverse('accounts:login')
                     }, status=status.HTTP_200_OK)
                 return Response({
                     'message': 'Invalid or expired code.',
@@ -114,7 +114,7 @@ class LoginView(APIView):
                 return Response({
                     'token': token.key,
                     'user': UserSerializer(user, context={'request': request}).data,
-                    'profile_url': request.build_absolute_uri(reverse('user-profile')),
+                    'profile_url': request.build_absolute_uri(reverse('accounts:user-profile')),
                     'redirect': None
                 }, status=status.HTTP_200_OK)
             try:

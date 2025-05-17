@@ -13,6 +13,11 @@ class University(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.short_name:
+            self.short_name = self.short_name.strip().upper()
+        super().save(*args, **kwargs)
+
 class AcademicUnit(models.Model):
     UNIT_TYPES = (
         ('department', 'Department'),
@@ -33,6 +38,11 @@ class AcademicUnit(models.Model):
         if self.unit_type == 'department':
             return f"Department of {self.name}"
         return f"Institute of {self.name}"
+
+    def save(self, *args, **kwargs):
+        if self.short_name:
+            self.short_name = self.short_name.strip().upper()
+        super().save(*args, **kwargs)
 
 class TeacherDesignation(models.Model):
     name = models.CharField(max_length=100, unique=True)

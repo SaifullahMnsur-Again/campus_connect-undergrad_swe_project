@@ -1,10 +1,25 @@
 from rest_framework import serializers
 from .models import University, AcademicUnit, TeacherDesignation
+from places.models import Place
+from django.urls import reverse
 
 class UniversitySerializer(serializers.ModelSerializer):
+    place_url = serializers.SerializerMethodField()
+
     class Meta:
         model = University
-        fields = ['id', 'name', 'short_name']
+        fields = ['id', 'name', 'short_name', 'place_url']
+
+    def get_place_url(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return None
+        root_place = Place.objects.filter(
+            university=obj, parent__isnull=True, approval_status='approved'
+        ).first()
+        if root_place:
+            return request.build_absolute_uri(reverse('places:place-detail', kwargs={'pk': root_place.pk}))
+        return None
 
 class AcademicUnitSerializer(serializers.ModelSerializer):
     university = UniversitySerializer(read_only=True)
@@ -13,10 +28,22 @@ class AcademicUnitSerializer(serializers.ModelSerializer):
     )
     name = serializers.CharField()  # Raw name for input
     unit_type = serializers.ChoiceField(choices=AcademicUnit.UNIT_TYPES)
+    place_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AcademicUnit
-        fields = ['id', 'name', 'short_name', 'unit_type', 'university', 'university_id']
+        fields = ['id', 'name', 'short_name', 'unit_type', 'university', 'university_id', 'place_url']
+
+    def get_place_url(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return None
+        root_place = Place.objects.filter(
+            academic_unit=obj, parent__isnull=True, approval_status='approved'
+        ).first()
+        if root_place:
+            return request.build_absolute_uri(reverse('places:place-detail', kwargs={'pk': root_place.pk}))
+        return None
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

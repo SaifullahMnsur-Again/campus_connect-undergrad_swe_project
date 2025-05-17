@@ -29,7 +29,8 @@ INSTALLED_APPS = [
     'accounts',
     'bloodbank',
     'universities',
-    'lostandfound'
+    'lostandfound',
+    'places',
 ]
 
 REST_FRAMEWORK = {
@@ -53,10 +54,9 @@ LOGGING = {
         },
     },
     'loggers': {
-        'accounts': {
+        'places.serializers': {
             'handlers': ['console'],
             'level': 'DEBUG',
-            'propagate': True,
         },
     },
 }
