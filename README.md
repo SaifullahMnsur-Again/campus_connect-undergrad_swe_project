@@ -1,12 +1,19 @@
 # Campus Connect API Documentation
 
-This document outlines the API endpoints for the **Campus Connect** application, which includes user management, blood bank services, lost and found functionality, and university-related data. All endpoints are prefixed with `/api/`.
+This document outlines the API endpoints for the **Campus Connect** platform, a Django-based RESTful API designed to facilitate university campus services such as campus exploration, blood bank management, lost and found, and user account management. The API supports various user roles (students, teachers, officers, staff) with specific requirements for registration and interaction.
 
----
+- **Base URL**: `/api/`
+- **Authentication**: Most endpoints require authentication via a token obtained through the `/api/accounts/login/` endpoint. Include the token in the `Authorization` header as `Token <token>`.
+- **Content Type**: Unless specified (e.g., multipart for file uploads), use `application/json`.
+- **Roles and Permissions**:
+  - **Students/Teachers**: Must specify university and academic unit; teachers require a teacher designation.
+  - **Officers/Staff**: Must specify designation and workplace.
+  - **Admins**: University admins (`admin_level='university'`) or app-wide admins (`admin_level='app'`) have elevated permissions.
+- **Response Format**: Responses typically include a `message` field and, where applicable, `data` or `redirect` fields.
 
 ## Table of Contents
 
-1. [Accounts API](#accounts-api)
+1. [Accounts](#accounts)
    - [Register User](#register-user)
    - [Verify Email](#verify-email)
    - [Login](#login)
@@ -14,8 +21,9 @@ This document outlines the API endpoints for the **Campus Connect** application,
    - [User List](#user-list)
    - [User Profile](#user-profile)
    - [User Detail](#user-detail)
-2. [Bloodbank API](#bloodbank-api)
-   - [Blood Group List/Detail](#blood-group-listdetail)
+2. [Blood Bank](#blood-bank)
+   - [Blood Group List](#blood-group-list)
+   - [Blood Group Detail](#blood-group-detail)
    - [Donor Register](#donor-register)
    - [Donor Profile](#donor-profile)
    - [Donor Withdraw](#donor-withdraw)
@@ -26,63 +34,57 @@ This document outlines the API endpoints for the **Campus Connect** application,
    - [Blood Request Delete](#blood-request-delete)
    - [Blood Request Donor Register](#blood-request-donor-register)
    - [Blood Request Donor List](#blood-request-donor-list)
-3. [Lost and Found API](#lost-and-found-api)
-   - [All Items List](#all-items-list)
-   - [Pending Items List](#pending-items-list)
-   - [Resolved Items List](#resolved-items-list)
+3. [Places](#places)
+   - [Place List/Create](#place-listcreate)
+   - [University Places](#university-places)
+   - [Place Detail](#place-detail)
+   - [Place Update](#place-update)
+   - [Place Delete](#place-delete)
+   - [Place Recursive Delete](#place-recursive-delete)
+   - [Place Search](#place-search)
+   - [Place Type List](#place-type-list)
+   - [Media Access](#media-access)
+   - [Pending Place Updates](#pending-place-updates)
+   - [Place Update Detail](#place-update-detail)
+   - [Place Update Approval](#place-update-approval)
+4. [Lost and Found](#lost-and-found)
    - [Lost Item List/Create](#lost-item-listcreate)
-   - [Found Item List/Create](#found-item-listcreate)
    - [Lost Item Detail](#lost-item-detail)
-   - [Found Item Detail](#found-item-detail)
    - [Lost Item Claim](#lost-item-claim)
-   - [Found Item Claim](#found-item-claim)
    - [Lost Item Resolve](#lost-item-resolve)
-   - [Found Item Resolve](#found-item-resolve)
    - [Lost Item Approve](#lost-item-approve)
-   - [Found Item Approve](#found-item-approve)
    - [My Claims List](#my-claims-list)
    - [My Posts List](#my-posts-list)
    - [Lost Item Claims List](#lost-item-claims-list)
-   - [Found Item Claims List](#found-item-claims-list)
    - [History](#history)
-   - [Media Access](#media-access)
-4. [Universities API](#universities-api)
-   - [University List](#university-list)
-   - [Department List](#department-list)
-   - [Institute List](#institute-list)
-   - [Teacher Designation List](#teacher-designation-list)
-   - [Department and Institute List](#department-and-institute-list)
-   - [University Users](#university-users)
+   - [Media Access](#media-access-lost-and-found)
 
----
-
-## Accounts API
+## Accounts
 
 ### Register User
-- **Endpoint**: `/api/accounts/register/`
-- **Method**: POST
-- **Permissions**: AllowAny
-- **Description**: Registers a new user and sends a verification code to the provided email.
+- **Endpoint**: `POST /api/accounts/register/`
+- **Permission**: AllowAny
+- **Description**: Registers a new user and sends a verification code to their email.
 - **Request Body**:
   ```json
   {
-    "name": "John Doe",
-    "email": "john.doe@example.com",
-    "password": "securepassword123",
-    "confirm_password": "securepassword123",
-    "phone": "+1234567890",
-    "blood_group": "A+",
-    "contact_visibility": "email",
-    "role": "student",
-    "admin_level": "none",
-    "university": 1,
-    "academic_unit": 1,
-    "teacher_designation": null,
-    "designation": "",
-    "workplace": ""
+    "name": "string",
+    "email": "string",
+    "password": "string (min 8 chars)",
+    "confirm_password": "string",
+    "role": "string (student|teacher|officer|staff)",
+    "contact_visibility": "string (none|email|phone|both)",
+    "phone": "string (optional)",
+    "blood_group": "string (optional, e.g., A+)",
+    "university": "integer (required for student/teacher)",
+    "academic_unit": "integer (required for student/teacher)",
+    "teacher_designation": "integer (required for teacher)",
+    "designation": "string (required for officer/staff)",
+    "workplace": "string (required for officer/staff)",
+    "admin_level": "string (none|university|app, default: none)"
   }
   ```
-- **Response**:
+- **Responses**:
   - **201 Created**:
     ```json
     {
@@ -90,47 +92,30 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "redirect": "/api/accounts/verify-email/"
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (e.g., invalid data, duplicate email, mismatched passwords):
     ```json
     {
       "message": {
-        "email": ["This email is already registered."]
+        "email": ["This email is already registered."],
+        "confirm_password": ["Passwords do not match."],
+        "academic_unit": ["Must select an academic unit if a university is chosen."]
       },
       "redirect": null
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/accounts/register/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "John Doe",
-    "email": "john.doe@example.com",
-    "password": "securepassword123",
-    "confirm_password": "securepassword123",
-    "phone": "+1234567890",
-    "blood_group": "A+",
-    "contact_visibility": "email",
-    "role": "student",
-    "admin_level": "none",
-    "university": 1,
-    "academic_unit": 1
-  }'
-  ```
 
 ### Verify Email
-- **Endpoint**: `/api/accounts/verify-email/`
-- **Method**: POST
-- **Permissions**: AllowAny
+- **Endpoint**: `POST /api/accounts/verify-email/`
+- **Permission**: AllowAny
 - **Description**: Verifies a user's email using a 6-digit code sent during registration.
 - **Request Body**:
   ```json
   {
-    "email": "john.doe@example.com",
-    "code": "123456"
+    "email": "string",
+    "code": "string (6 digits)"
   }
   ```
-- **Response**:
+- **Responses**:
   - **200 OK**:
     ```json
     {
@@ -138,87 +123,70 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "redirect": "/api/accounts/login/"
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (invalid/expired code):
     ```json
     {
       "message": "Invalid or expired code.",
       "redirect": null
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/accounts/verify-email/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com",
-    "code": "123456"
-  }'
-  ```
+  - **404 Not Found** (user not found):
+    ```json
+    {
+      "message": "User not found.",
+      "redirect": null
+    }
+    ```
 
 ### Login
-- **Endpoint**: `/api/accounts/login/`
-- **Method**: POST
-- **Permissions**: AllowAny
+- **Endpoint**: `POST /api/accounts/login/`
+- **Permission**: AllowAny
 - **Description**: Authenticates a user and returns an authentication token.
 - **Request Body**:
   ```json
   {
-    "email": "john.doe@example.com",
-    "password": "securepassword123"
+    "email": "string",
+    "password": "string"
   }
   ```
-- **Response**:
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "token": "abc123token",
+      "token": "string",
       "user": {
-        "id": 1,
-        "name": "John Doe",
-        "email": "john.doe@example.com",
-        "phone": "+1234567890",
-        "blood_group": "A+",
-        "contact_visibility": "email",
-        "role": "student",
-        "admin_level": "none",
-        "university": {
-          "name": "Example University",
-          "short_name": "EU"
-        },
-        "academic_unit": {
-          "name": "Department of Computer Science",
-          "short_name": "CS",
-          "unit_type": "department"
-        }
+        "id": "integer",
+        "name": "string",
+        "email": "string",
+        "phone": "string|null",
+        "blood_group": "string|null",
+        "contact_visibility": "string",
+        "role": "string",
+        "admin_level": "string",
+        "university": {"name": "string", "short_name": "string|null"}|null,
+        "academic_unit": {"name": "string", "short_name": "string|null", "unit_type": "string"}|null,
+        "teacher_designation": "string|null",
+        "designation": "string|null",
+        "workplace": "string|null"
       },
-      "profile_url": "http://localhost:8000/api/accounts/profile/",
+      "profile_url": "string",
       "redirect": null
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (invalid credentials, inactive account):
     ```json
     {
-      "message": "Invalid credentials.",
+      "message": "Invalid credentials." | "Account is inactive or unverified.",
       "redirect": null
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/accounts/login/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john.doe@example.com",
-    "password": "securepassword123"
-  }'
-  ```
 
 ### Logout
-- **Endpoint**: `/api/accounts/logout/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Logs out a user by deleting their authentication token.
+- **Endpoint**: `POST /api/accounts/logout/`
+- **Permission**: IsAuthenticated
+- **Description**: Logs out the user by deleting their authentication token.
 - **Request Body**: None
-- **Response**:
+- **Responses**:
   - **200 OK**:
     ```json
     {
@@ -226,167 +194,117 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "redirect": null
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (unexpected error):
     ```json
     {
-      "message": "An error occurred.",
+      "message": "Error message",
       "redirect": null
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/accounts/logout/ \
-  -H "Authorization: Token abc123token"
-  ```
 
 ### User List
-- **Endpoint**: `/api/accounts/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Retrieves a paginated list of all users.
+- **Endpoint**: `GET /api/accounts/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists all users with pagination, showing basic details.
 - **Query Parameters**:
   - `limit`: Number of results per page
   - `offset`: Starting point for pagination
-- **Response**:
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "count": 2,
-      "next": null,
-      "previous": null,
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
       "results": [
         {
-          "id": 1,
-          "name": "John Doe",
-          "role": "student",
-          "admin_level": "none",
-          "university": {
-            "name": "Example University",
-            "short_name": "EU"
-          },
-          "academic_unit": {
-            "name": "Department of Computer Science",
-            "short_name": "CS",
-            "unit_type": "department"
-          },
-          "detail_url": "http://localhost:8000/api/accounts/1/"
+          "id": "integer",
+          "name": "string",
+          "role": "string",
+          "admin_level": "string",
+          "university": {"name": "string", "short_name": "string|null"}|null,
+          "academic_unit": {"name": "string", "short_name": "string|null", "unit_type": "string"}|null,
+          "detail_url": "string"
         }
       ]
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/accounts/?limit=10&offset=0 \
-  -H "Authorization: Token abc123token"
-  ```
 
 ### User Profile
-- **Endpoint**: `/api/accounts/profile/`
-- **Method**: GET, PATCH
-- **Permissions**: IsAuthenticated
+- **Endpoint**: `GET /api/accounts/profile/` | `PATCH /api/accounts/profile/`
+- **Permission**: IsAuthenticated
 - **Description**: Retrieves or updates the authenticated user's profile.
 - **Request Body (PATCH)**:
   ```json
   {
-    "phone": "+0987654321",
-    "contact_visibility": "phone",
-    "blood_group": "B+"
+    "name": "string",
+    "phone": "string|null",
+    "blood_group": "string|null",
+    "contact_visibility": "string",
+    "university": "integer|null",
+    "academic_unit": "integer|null",
+    "teacher_designation": "integer|null",
+    "designation": "string|null",
+    "workplace": "string|null"
   }
   ```
-- **Response**:
-  - **GET (200 OK)**:
+- **Responses**:
+  - **GET 200 OK**:
     ```json
     {
-      "id": 1,
-      "name": "John Doe",
-      "email": "john.doe@example.com",
-      "phone": "+1234567890",
-      "blood_group": "A+",
-      "contact_visibility": "email",
-      "role": "student",
-      "admin_level": "none",
-      "university": {
-        "name": "Example University",
-        "short_name": "EU"
-      },
-      "academic_unit": {
-        "name": "Department of Computer Science",
-        "short_name": "CS",
-        "unit_type": "department"
-      }
+      "id": "integer",
+      "name": "string",
+      "email": "string",
+      "phone": "string|null",
+      "blood_group": "string|null",
+      "contact_visibility": "string",
+      "role": "string",
+      "admin_level": "string",
+      "university": {"name": "string", "short_name": "string|null"}|null,
+      "academic_unit": {"name": "string", "short_name": "string|null", "unit_type": "string"}|null,
+      "teacher_designation": "string|null",
+      "designation": "string|null",
+      "workplace": "string|null"
     }
     ```
-  - **PATCH (200 OK)**:
+  - **PATCH 200 OK**:
     ```json
     {
       "message": "Profile updated successfully.",
-      "data": {
-        "id": 1,
-        "name": "John Doe",
-        "email": "john.doe@example.com",
-        "phone": "+0987654321",
-        "blood_group": "B+",
-        "contact_visibility": "phone",
-        "role": "student",
-        "admin_level": "none",
-        "university": {
-          "name": "Example University",
-          "short_name": "EU"
-        },
-        "academic_unit": {
-          "name": "Department of Computer Science",
-          "short_name": "CS",
-          "unit_type": "department"
-        }
-      }
+      "data": { /* Updated user data as above */ }
     }
     ```
-  - **PATCH (400 Bad Request)**:
+  - **PATCH 400 Bad Request** (validation errors):
     ```json
     {
       "message": {
-        "blood_group": ["Blood group 'X+' does not exist."]
+        "blood_group": ["Blood group 'X' does not exist."],
+        "academic_unit": ["Academic unit must belong to the selected university."]
       }
     }
     ```
-- **Example**:
-  ```bash
-  curl -X PATCH http://localhost:8000/api/accounts/profile/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "+0987654321",
-    "contact_visibility": "phone",
-    "blood_group": "B+"
-  }'
-  ```
 
 ### User Detail
-- **Endpoint**: `/api/accounts/<int:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves details of a specific user by ID, respecting contact visibility settings.
-- **Response**:
+- **Endpoint**: `GET /api/accounts/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves a user's details by ID, respecting contact visibility settings.
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "id": 1,
-      "name": "John Doe",
-      "email": "john.doe@example.com",
-      "phone": "+1234567890",
-      "blood_group": "A+",
-      "contact_visibility": "email",
-      "role": "student",
-      "admin_level": "none",
-      "university": {
-        "name": "Example University",
-        "short_name": "EU"
-      },
-      "academic_unit": {
-        "name": "Department of Computer Science",
-        "short_name": "CS",
-        "unit_type": "department"
-      }
+      "id": "integer",
+      "name": "string",
+      "email": "string|null",
+      "phone": "string|null",
+      "blood_group": "string|null",
+      "contact_visibility": "string",
+      "role": "string",
+      "admin_level": "string",
+      "university": {"name": "string", "short_name": "string|null"}|null,
+      "academic_unit": {"name": "string", "short_name": "string|null", "unit_type": "string"}|null,
+      "teacher_designation": "string|null",
+      "designation": "string|null",
+      "workplace": "string|null"
     }
     ```
   - **404 Not Found**:
@@ -395,154 +313,127 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "message": "User not found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/accounts/1/
-  ```
 
----
+## Blood Bank
 
-## Bloodbank API
-
-### Blood Group List/Detail
-- **Endpoint**: `/api/bloodbank/bloodgroups/` or `/api/bloodbank/bloodgroups/<str:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a list of all blood groups or details of a specific blood group by name.
-- **Response**:
-  - **List (200 OK)**:
+### Blood Group List
+- **Endpoint**: `GET /api/bloodbank/blood-groups/`
+- **Permission**: AllowAny
+- **Description**: Lists all blood groups.
+- **Responses**:
+  - **200 OK**:
     ```json
     ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
     ```
-  - **Detail (200 OK)**:
+
+### Blood Group Detail
+- **Endpoint**: `GET /api/bloodbank/blood-groups/<str:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves details of a specific blood group.
+- **Responses**:
+  - **200 OK**:
     ```json
     {
       "name": "A+"
     }
     ```
-  - **Detail (404 Not Found)**:
+  - **404 Not Found**:
     ```json
     {
       "message": "Blood group not found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/bloodbank/bloodgroups/
-  ```
 
 ### Donor Register
-- **Endpoint**: `/api/bloodbank/donor/register/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
+- **Endpoint**: `POST /api/bloodbank/donor-register/`
+- **Permission**: IsAuthenticated
 - **Description**: Registers the authenticated user as a blood donor.
 - **Request Body**:
   ```json
   {
-    "emergency_contact": "+1234567890",
-    "preferred_location": "City Hospital",
-    "last_donated": "2025-01-01",
-    "consent": true
+    "emergency_contact": "string (+1234567890)",
+    "preferred_location": "string",
+    "last_donated": "string (YYYY-MM-DD, optional)",
+    "consent": "boolean"
   }
   ```
-- **Response**:
+- **Responses**:
   - **201 Created**:
     ```json
     {
-      "emergency_contact": "+1234567890",
-      "preferred_location": "City Hospital",
-      "last_donated": "2025-01-01",
-      "consent": true,
-      "name": "John Doe",
-      "blood_group": "A+",
-      "user": 1,
-      "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+      "emergency_contact": "string",
+      "preferred_location": "string",
+      "last_donated": "string|null",
+      "consent": "boolean",
+      "name": "string",
+      "blood_group": "string|null",
+      "user": "integer",
+      "detail_url": "string"
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (already registered, invalid data):
     ```json
     {
-      "message": "User is already registered as a donor."
+      "message": "User is already registered as a donor." | {
+        "emergency_contact": ["Phone number must be in international format (e.g., +1234567890)."]
+      }
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/bloodbank/donor/register/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "emergency_contact": "+1234567890",
-    "preferred_location": "City Hospital",
-    "last_donated": "2025-01-01",
-    "consent": true
-  }'
-  ```
 
 ### Donor Profile
-- **Endpoint**: `/api/bloodbank/donor/` or `/api/bloodbank/donor/profile/`
-- **Method**: GET, PATCH
-- **Permissions**: IsAuthenticated
+- **Endpoint**: `GET /api/bloodbank/donor-profile/` | `PATCH /api/bloodbank/donor-profile/`
+- **Permission**: IsAuthenticated
 - **Description**: Retrieves or updates the authenticated user's donor profile.
 - **Request Body (PATCH)**:
   ```json
   {
-    "preferred_location": "General Hospital"
+    "emergency_contact": "string",
+    "preferred_location": "string",
+    "last_donated": "string|null",
+    "consent": "boolean"
   }
   ```
-- **Response**:
-  - **GET (200 OK)**:
+- **Responses**:
+  - **GET 200 OK**:
     ```json
     {
-      "emergency_contact": "+1234567890",
-      "preferred_location": "City Hospital",
-      "last_donated": "2025-01-01",
-      "consent": true,
-      "name": "John Doe",
-      "blood_group": "A+",
-      "user": 1,
-      "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+      "emergency_contact": "string",
+      "preferred_location": "string",
+      "last_donated": "string|null",
+      "consent": "boolean",
+      "name": "string",
+      "blood_group": "string|null",
+      "user": "integer",
+      "detail_url": "string"
     }
     ```
-  - **PATCH (200 OK)**:
+  - **PATCH 200 OK**:
     ```json
     {
       "message": "Donor profile updated successfully.",
-      "data": {
-        "emergency_contact": "+1234567890",
-        "preferred_location": "General Hospital",
-        "last_donated": "2025-01-01",
-        "consent": true,
-        "name": "John Doe",
-        "blood_group": "A+",
-        "user": 1,
-        "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
-      }
+      "data": { /* Updated donor data as above */ }
     }
     ```
-  - **404 Not Found**:
+  - **404 Not Found** (no donor profile):
     ```json
     {
       "message": "No donor profile found. To register as a donor use the url below.",
-      "redirect": "http://localhost:8000/api/bloodbank/donor/register/"
+      "redirect": "/api/bloodbank/donor-register/"
     }
     ```
-- **Example**:
-  ```bash
-  curl -X PATCH http://localhost:8000/api/bloodbank/donor/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "preferred_location": "General Hospital"
-  }'
-  ```
+  - **400 Bad Request** (validation errors):
+    ```json
+    {
+      "last_donated": ["Last donated date cannot be in the future."]
+    }
+    ```
 
 ### Donor Withdraw
-- **Endpoint**: `/api/bloodbank/donor/withdraw/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
+- **Endpoint**: `POST /api/bloodbank/donor-withdraw/`
+- **Permission**: IsAuthenticated
 - **Description**: Removes the authenticated user's donor profile.
 - **Request Body**: None
-- **Response**:
+- **Responses**:
   - **204 No Content**:
     ```json
     {
@@ -555,29 +446,23 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "message": "No donor profile found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/bloodbank/donor/withdraw/ \
-  -H "Authorization: Token abc123token"
-  ```
 
 ### Donor Detail
-- **Endpoint**: `/api/bloodbank/donor/<int:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves details of a specific donor by ID.
-- **Response**:
+- **Endpoint**: `GET /api/bloodbank/donors/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves a donor's details by ID.
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "emergency_contact": "+1234567890",
-      "preferred_location": "City Hospital",
-      "last_donated": "2025-01-01",
-      "consent": true,
-      "name": "John Doe",
-      "blood_group": "A+",
-      "user": 1,
-      "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+      "emergency_contact": "string",
+      "preferred_location": "string",
+      "last_donated": "string|null",
+      "consent": "boolean",
+      "name": "string",
+      "blood_group": "string|null",
+      "user": "integer",
+      "detail_url": "string"
     }
     ```
   - **404 Not Found**:
@@ -586,178 +471,114 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "message": "Donor profile not found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/bloodbank/donor/1/
-  ```
 
 ### Donor List
-- **Endpoint**: `/api/bloodbank/donors/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a paginated list of donors, with optional filters.
+- **Endpoint**: `GET /api/bloodbank/donors/`
+- **Permission**: AllowAny
+- **Description**: Lists donors with optional filters and pagination.
 - **Query Parameters**:
-  - `blood_group`: Filter by blood group (e.g., `A+`)
+  - `blood_group`: Filter by blood group (e.g., A+)
   - `location`: Filter by preferred location (case-insensitive)
-  - `last_donated_before`: Filter by last donated date before (YYYY-MM-DD)
-  - `last_donated_after`: Filter by last donated date after (YYYY-MM-DD)
-- **Response**:
+  - `last_donated_before`: Filter by last donated date (YYYY-MM-DD)
+  - `last_donated_after`: Filter by last donated date (YYYY-MM-DD)
+  - `limit`: Number of results per page
+  - `offset`: Starting point for pagination
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "count": 1,
-      "next": null,
-      "previous": null,
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
       "results": [
         {
-          "emergency_contact": "+1234567890",
-          "preferred_location": "City Hospital",
-          "last_donated": "2025-01-01",
-          "consent": true,
-          "name": "John Doe",
-          "blood_group": "A+",
-          "user": 1,
-          "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+          "emergency_contact": "string",
+          "preferred_location": "string",
+          "last_donated": "string|null",
+          "consent": "boolean",
+          "name": "string",
+          "blood_group": "string|null",
+          "user": "integer",
+          "detail_url": "string"
         }
       ]
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (invalid date format):
     ```json
     {
       "message": "Invalid date format for last_donated_before. Use YYYY-MM-DD."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/bloodbank/donors/?blood_group=A+&limit=10
-  ```
 
 ### Blood Request List/Create
-- **Endpoint**: `/api/bloodbank/requests/`
-- **Method**: GET, POST
-- **Permissions**: GET (AllowAny), POST (IsAuthenticated)
-- **Description**: Lists open blood requests or creates a new blood request.
+- **Endpoint**: `GET /api/bloodbank/requests/` | `POST /api/bloodbank/requests/`
+- **Permission**: GET: AllowAny, POST: IsAuthenticated
+- **Description**: Lists open blood requests (or all for the authenticated user) or creates a new blood request.
 - **Request Body (POST)**:
   ```json
   {
-    "blood_group": "A+",
-    "university": 1,
-    "title": "Urgent Blood Needed",
-    "description": "Need A+ blood for surgery.",
-    "request_date": "2025-05-20",
-    "urgent": true,
-    "location": "City Hospital"
+    "title": "string",
+    "description": "string",
+    "blood_group": "string",
+    "university": "integer",
+    "request_date": "string (YYYY-MM-DD)",
+    "urgent": "boolean",
+    "location": "string"
   }
   ```
-- **Response**:
-  - **GET (200 OK)**:
+- **Responses**:
+  - **GET 200 OK**:
     ```json
     {
-      "count": 1,
-      "next": null,
-      "previous": null,
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
       "results": [
         {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "blood_group": "A+",
-          "university": 1,
-          "title": "Urgent Blood Needed",
-          "description": "Need A+ blood for surgery.",
-          "request_date": "2025-05-20",
-          "urgent": true,
-          "location": "City Hospital",
-          "status": "open",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "resolved_by": null,
-          "media": [],
-          "registered_donors": []
+          "id": "integer",
+          "title": "string",
+          "description": "string",
+          "user": {"id": "integer", "name": "string", "detail_url": "string"},
+          "blood_group": {"name": "string"},
+          "university": {"id": "integer", "name": "string"},
+          "request_date": "string",
+          "urgent": "boolean",
+          "location": "string",
+          "status": "string",
+          "created_at": "string",
+          "updated_at": "string",
+          "resolved_by": {"id": "integer", "name": "string", "detail_url": "string"}|null
         }
       ]
     }
     ```
-  - **POST (201 Created)**:
+  - **POST 201 Created**:
     ```json
     {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "blood_group": "A+",
-      "university": 1,
-      "title": "Urgent Blood Needed",
-      "description": "Need A+ blood for surgery.",
-      "request_date": "2025-05-20",
-      "urgent": true,
-      "location": "City Hospital",
-      "status": "open",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "resolved_by": null,
-      "media": [],
-      "registered_donors": []
+      "id": "integer",
+      "title": "string",
+      /* Other fields as above */
     }
     ```
-  - **POST (400 Bad Request)**:
+  - **POST 400 Bad Request** (validation errors):
     ```json
     {
-      "error": {
-        "blood_group": ["Blood group 'X+' does not exist."]
-      }
+      "blood_group": ["This field is required."]
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/bloodbank/requests/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "blood_group": "A+",
-    "university": 1,
-    "title": "Urgent Blood Needed",
-    "description": "Need A+ blood for surgery.",
-    "request_date": "2025-05-20",
-    "urgent": true,
-    "location": "City Hospital"
-  }'
-  ```
 
 ### Blood Request Detail
-- **Endpoint**: `/api/bloodbank/requests/<int:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves details of a specific open blood request.
-- **Response**:
+- **Endpoint**: `GET /api/bloodbank/requests/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves details of an open blood request.
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "blood_group": "A+",
-      "university": 1,
-      "title": "Urgent Blood Needed",
-      "description": "Need A+ blood for surgery.",
-      "request_date": "2025-05-20",
-      "urgent": true,
-      "location": "City Hospital",
-      "status": "open",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "resolved_by": null,
-      "media": [],
-      "registered_donors": []
+      "id": "integer",
+      "title": "string",
+      /* Other fields as in list response */
     }
     ```
   - **404 Not Found**:
@@ -766,24 +587,19 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "error": "Blood request not found, not approved, or resolved."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/bloodbank/requests/1/
-  ```
 
 ### Blood Request Delete
-- **Endpoint**: `/api/bloodbank/requests/<int:pk>/delete/`
-- **Method**: DELETE
-- **Permissions**: IsAuthenticated
+- **Endpoint**: `DELETE /api/bloodbank/requests/<int:pk>/`
+- **Permission**: IsAuthenticated
 - **Description**: Deletes a blood request if the user is the owner or a university admin.
-- **Response**:
+- **Responses**:
   - **204 No Content**:
     ```json
     {
       "message": "Blood request deleted successfully."
     }
     ```
-  - **403 Forbidden**:
+  - **403 Forbidden** (no permission):
     ```json
     {
       "error": "You do not have permission to delete this request."
@@ -795,103 +611,85 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "error": "Blood request not found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X DELETE http://localhost:8000/api/bloodbank/requests/1/delete/ \
-  -H "Authorization: Token abc123token"
-  ```
 
 ### Blood Request Donor Register
-- **Endpoint**: `/api/bloodbank/requests/donor/register/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Registers the authenticated user (who must be a donor) to donate for a blood request.
+- **Endpoint**: `POST /api/bloodbank/request-donor-register/`
+- **Permission**: IsAuthenticated
+- **Description**: Registers the authenticated user (must be a donor) for a blood request.
 - **Request Body**:
   ```json
   {
-    "blood_request": 1,
-    "message": "I am available to donate on May 20.",
-    "contact_info": "+1234567890"
+    "blood_request": "integer",
+    "message": "string (10-1000 chars)",
+    "contact_info": "string (+1234567890)"
   }
   ```
-- **Response**:
+- **Responses**:
   - **201 Created**:
     ```json
     {
-      "id": 1,
-      "blood_request": 1,
+      "id": "integer",
+      "blood_request": "integer",
       "donor": {
-        "id": 1,
-        "name": "John Doe",
-        "blood_group": "A+",
-        "emergency_contact": "+1234567890",
-        "preferred_location": "City Hospital",
-        "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+        "id": "integer",
+        "name": "string",
+        "blood_group": "string|null",
+        "emergency_contact": "string",
+        "preferred_location": "string",
+        "detail_url": "string"
       },
-      "message": "I am available to donate on May 20.",
-      "contact_info": "+1234567890",
-      "created_at": "2025-05-17T01:27:00Z"
+      "message": "string",
+      "contact_info": "string",
+      "created_at": "string"
     }
     ```
-  - **400 Bad Request**:
-    ```json
-    {
-      "error": {
-        "non_field_errors": ["You have already registered to donate for this request."]
-      }
-    }
-    ```
-  - **400 Bad Request (Not a Donor)**:
+  - **400 Bad Request** (not a donor, invalid data):
     ```json
     {
       "message": "You must be registered as a donor to volunteer for a blood request.",
-      "redirect": "http://localhost:8000/api/bloodbank/donor/register/"
+      "redirect": "/api/bloodbank/donor-register/"
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/bloodbank/requests d/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "blood_request": 1,
-    "message": "I am available to donate on May 20.",
-    "contact_info": "+1234567890"
-  }'
-  ```
+  - **400 Bad Request** (validation errors):
+    ```json
+    {
+      "error": {
+        "message": ["Ensure this field has at least 10 characters."]
+      }
+    }
+    ```
 
 ### Blood Request Donor List
-- **Endpoint**: `/api/bloodbank/requests/<int:pk>/donors/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Lists registered donors for a specific open blood request, accessible to the request owner or admins.
-- **Response**:
+- **Endpoint**: `GET /api/bloodbank/requests/<int:pk>/donors/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists donors registered for a blood request (accessible to the request owner or admins).
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "count": 1,
-      "next": null,
-      "previous": null,
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
       "results": [
         {
-          "id": 1,
-          "blood_request": 1,
+          "id": "integer",
+          "blood_request": "integer",
           "donor": {
-            "id": 1,
-            "name": "John Doe",
-            "blood_group": "A+",
-            "emergency_contact": "+1234567890",
-            "preferred_location": "City Hospital",
-            "detail_url": "http://localhost:8000/api/bloodbank/donor/1/"
+            "id": "integer",
+            "name": "string",
+            "blood_group": "string|null",
+            "emergency_contact": "string",
+            "preferred_location": "string",
+            "detail_url": "string"
           },
-          "message": "I am available to donate on May 20.",
-          "contact_info": "+1234567890",
-          "created_at": "2025-05-17T01:27:00Z"
+          "message": "string",
+          "contact_info": "string",
+          "created_at": "string"
         }
       ]
     }
     ```
-  - **403 Forbidden**:
+  - **403 Forbidden** (no permission):
     ```json
     {
       "error": "You do not have permission to view registered donors for this request."
@@ -903,960 +701,709 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "error": "Blood request not found, not approved, or resolved."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/bloodbank/requests/1/donors/ \
-  -H "Authorization: Token abc123token"
-  ```
 
----
+## Places
 
-## Lost and Found API
-
-### All Items List
-- **Endpoint**: `/api/lostandfound/all/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Lists all approved, unresolved lost and found items.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": null,
-          "approve_url": null
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/all/
-  ```
-
-### Pending Items List
-- **Endpoint**: `/api/lostandfound/pending/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated, AdminPermission
-- **Description**: Lists pending lost and found items for admins.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "pending",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": true,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": null,
-          "approve_url": "http://localhost:8000/api/lostandfound/lost/1/approve/"
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/pending/ \
-  -H "Authorization: Token abc123token"
-  ```
-
-### Resolved Items List
-- **Endpoint**: `/api/lostandfound/resolved/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Lists approved, resolved lost and found items.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "found",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": null,
-          "approve_url": null
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/resolved/
-  ```
-
-### Lost Item List/Create
-- **Endpoint**: `/api/lostandfound/lost/`
-- **Method**: GET, POST
-- **Permissions**: GET (AllowAny), POST (IsAuthenticated)
-- **Description**: Lists approved, unresolved lost items or creates a new lost item (pending approval).
+### Place List/Create
+- **Endpoint**: `GET /api/places/` | `POST /api/places/`
+- **Permission**: GET: AllowAny, POST: IsAuthenticated
+- **Description**: Lists approved places with pagination or creates a new place (multipart for media uploads).
 - **Request Body (POST)**:
   ```json
   {
-    "university": 1,
-    "title": "Lost Wallet",
-    "description": "Black leather wallet lost in library.",
-    "lost_date": "2025-05-15",
-    "approximate_time": "14:30:00",
-    "location": "Main Library",
-    "media_files": []
+    "name": "string",
+    "university": "integer",
+    "academic_unit": "integer|null",
+    "place_type": "string",
+    "parent": "integer|null",
+    "description": "string",
+    "history": "string",
+    "establishment_year": "integer|null",
+    "relative_location": "string",
+    "latitude": "float|null",
+    "longitude": "float|null",
+    "maps_link": "string",
+    "university_root": "boolean",
+    "academic_unit_root": "boolean",
+    "media_files": ["file (jpg, jpeg, png, mp4, mov, max 10MB)"]
   }
   ```
-- **Response**:
-  - **GET (200 OK)**:
+- **Responses**:
+  - **GET 200 OK**:
     ```json
     {
-      "count": 1,
-      "next": null,
-      "previous": null,
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
       "results": [
         {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": null,
-          "approve_url": null
+          "id": "integer",
+          "university": "integer",
+          "academic_unit": "integer|null",
+          "parent": "integer|null",
+          "parent_data": {"id": "integer", "name": "string", "detail_url": "string"}|null,
+          "children": [{"id": "integer", "name": "string", "detail_url": "string"}],
+          "name": "string",
+          "description": "string",
+          "history": "string",
+          "establishment_year": "integer|null",
+          "place_type": "string",
+          "relative_location": "string",
+          "latitude": "float|null",
+          "longitude": "float|null",
+          "maps_link": "string",
+          "created_at": "string",
+          "updated_at": "string",
+          "created_by": {"id": "integer", "name": "string", "detail_url": "string"},
+          "media": [{"id": "integer", "file_url": "string", "uploaded_at": "string", "next_media_url": "string|null", "previous_media_url": "string|null"}],
+          "approval_status": "string",
+          "university_root": "boolean",
+          "academic_unit_root": "boolean"
         }
       ]
     }
     ```
-  - **POST (201 Created)**:
+  - **POST 201 Created**:
     ```json
     {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "university": 1,
-      "title": "Lost Wallet",
-      "description": "Black leather wallet lost in library.",
-      "lost_date": "2025-05-15",
-      "approximate_time": "14:30:00",
-      "location": "Main Library",
-      "status": "open",
-      "approval_status": "pending",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "media": [],
-      "post_type": "lost",
-      "is_admin": false,
-      "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-      "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-      "resolve_url": "http://localhost:8000/api/lostandfound/lost/1/resolve/",
-      "approve_url": null
+      "id": "integer",
+      /* Other fields as above */
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/lost/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "university": 1,
-    "title": "Lost Wallet",
-    "description": "Black leather wallet lost in library.",
-    "lost_date": "2025-05-15",
-    "approximate_time": "14:30:00",
-    "location": "Main Library"
-  }'
-  ```
+  - **POST 400 Bad Request** (validation errors):
+    ```json
+    {
+      "academic_unit": ["Academic unit must belong to the selected university."],
+      "media_files": ["File test.jpg exceeds maximum size of 10MB."]
+    }
+    ```
 
-### Found Item List/Create
-- **Endpoint**: `/api/lostandfound/found/`
-- **Method**: GET, POST
-- **Permissions**: GET (AllowAny), POST (IsAuthenticated)
-- **Description**: Lists approved, unresolved found items or creates a new found item (pending approval).
-- **Request Body (POST)**:
-  ```json
-  {
-    "university": 1,
-    "title": "Found Wallet",
-    "description": "Found a black leather wallet in library.",
-    "found_date": "2025-05-15",
-    "approximate_time": "14:30:00",
-    "location": "Main Library",
-    "media_files": []
-  }
-  ```
-- **Response**:
-  - **GET (200 OK)**:
+### University Places
+- **Endpoint**: `GET /api/places/universities/`
+- **Permission**: AllowAny
+- **Description**: Lists all root places (parent=null) that are approved.
+- **Responses**:
+  - **200 OK**:
     ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Found Wallet",
-          "description": "Found a black leather wallet in library.",
-          "found_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "found",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/found/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/found/1/claims/",
-          "resolve_url": null,
-          "approve_url": null
-        }
-      ]
-    }
+    [
+      {
+        "id": "integer",
+        /* Other fields as in Place List response */
+      }
+    ]
     ```
-  - **POST (201 Created)**:
-    ```json
-    {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "university": 1,
-      "title": "Found Wallet",
-      "description": "Found a black leather wallet in library.",
-      "found_date": "2025-05-15",
-      "approximate_time": "14:30:00",
-      "location": "Main Library",
-      "status": "open",
-      "approval_status": "pending",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "media": [],
-      "post_type": "found",
-      "is_admin": false,
-      "detail_url": "http://localhost:8000/api/lostandfound/found/1/",
-      "claims_url": "http://localhost:8000/api/lostandfound/found/1/claims/",
-      "resolve_url": "http://localhost:8000/api/lostandfound/found/1/resolve/",
-      "approve_url": null
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/found/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "university": 1,
-    "title": "Found Wallet",
-    "description": "Found a black leather wallet in library.",
-    "found_date": "2025-05-15",
-    "approximate_time": "14:30:00",
-    "location": "Main Library"
-  }'
-  ```
 
-### Lost Item Detail
-- **Endpoint**: `/api/lostandfound/lost/<int:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves details of a specific approved, unresolved lost item.
-- **Response**:
+### Place Detail
+- **Endpoint**: `GET /api/places/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves details of an approved place.
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "title": "Lost Wallet",
-      "description": "Black leather wallet lost in library.",
-      "lost_date": "2025-05-15",
-      "approximate_time": "14:30:00",
-      "location": "Main Library",
-      "status": "open",
-      "approval_status": "approved",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "media": [],
-      "post_type": "lost",
-      "is_admin": false,
-      "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-      "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-      "resolve_url": null,
-      "approve_url": null
+      "id": "integer",
+      /* Other fields as in Place List response */
     }
     ```
   - **404 Not Found**:
     ```json
     {
-      "error": "Lost item not found, not approved, or resolved."
+      "error": "Place not found or awaiting approval. Contact an admin to check status."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/lost/1/
-  ```
 
-### Found Item Detail
-- **Endpoint**: `/api/lostandfound/found/<int:pk>/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves details of a specific approved, unresolved found item.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "id": 1,
-      "user": {
-        "id": 1,
-        "name": "John Doe",
-        "detail_url": "http://localhost:8000/api/accounts/1/"
-      },
-      "title": "Found Wallet",
-      "description": "Found a black leather wallet in library.",
-      "found_date": "2025-05-15",
-      "approximate_time": "14:30:00",
-      "location": "Main Library",
-      "status": "open",
-      "approval_status": "approved",
-      "created_at": "2025-05-17T01:27:00Z",
-      "updated_at": "2025-05-17T01:27:00Z",
-      "media": [],
-      "post_type": "found",
-      "is_admin": false,
-      "detail_url": "http://localhost:8000/api/lostandfound/found/1/",
-      "claims_url": "http://localhost:8000/api/lostandfound/found/1/claims/",
-      "resolve_url": null,
-      "approve_url": null
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Found item not found, not approved, or resolved."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/found/1/
-  ```
-
-### Lost Item Claim
-- **Endpoint**: `/api/lostandfound/lost/claim/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Creates a claim for an approved, open lost item.
+### Place Update
+- **Endpoint**: `POST /api/places/<int:pk>/update/`
+- **Permission**: IsAuthenticated
+- **Description**: Submits an update for an approved place (multipart for media uploads). Non-admins can only update media.
 - **Request Body**:
   ```json
   {
-    "lost_item": 1,
-    "description": "I believe this is my wallet, lost on May 15.",
-    "media_files": []
+    "university": "integer|null",
+    "academic_unit": "integer|null",
+    "parent": "integer|null",
+    "name": "string",
+    "description": "string",
+    "history": "string",
+    "establishment_year": "integer|null",
+    "place_type": "string",
+    "relative_location": "string",
+    "latitude": "float|null",
+    "longitude": "float|null",
+    "maps_link": "string",
+    "university_root": "boolean",
+    "academic_unit_root": "boolean",
+    "media_files": ["file (jpg, jpeg, png, mp4, mov, max 10MB)"]
   }
   ```
-- **Response**:
+- **Responses**:
   - **201 Created**:
     ```json
     {
-      "id": 1,
-      "lost_item": 1,
-      "claimant": {
-        "id": 2,
-        "name": "Jane Doe",
-        "detail_url": "http://localhost:8000/api/accounts/2/"
-      },
-      "description": "I believe this is my wallet, lost on May 15.",
-      "created_at": "2025-05-17T01:27:00Z",
-      "media": []
-    }
-    ```
-  - **400 Bad Request**:
-    ```json
-    {
-      "error": {
-        "non_field_errors": ["You cannot claim your own lost item."]
+      "message": "Place update submitted for approval.",
+      "data": {
+        "id": "integer",
+        "place": "integer",
+        "university": "integer|null",
+        "academic_unit": "integer|null",
+        "parent": "integer|null",
+        "name": "string",
+        "description": "string",
+        "history": "string",
+        "establishment_year": "integer|null",
+        "place_type": "string",
+        "relative_location": "string",
+        "latitude": "float|null",
+        "longitude": "float|null",
+        "maps_link": "string",
+        "created_at": "string",
+        "updated_at": "string",
+        "updated_by": {"id": "integer", "name": "string", "detail_url": "string"},
+        "media": [{"id": "integer", "file_url": "string", "uploaded_at": "string", "next_media_url": "string|null", "previous_media_url": "string|null"}],
+        "approval_status": "string",
+        "university_root": "boolean",
+        "academic_unit_root": "boolean",
+        "detail_url": "string",
+        "approval_url": "string"
       }
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/lost/claim/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lost_item": 1,
-    "description": "I believe this is my wallet, lost on May 15."
-  }'
-  ```
-
-### Found Item Claim
-- **Endpoint**: `/api/lostandfound/found/claim/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Creates a claim for an approved, open found item.
-- **Request Body**:
-  ```json
-  {
-    "found_item": 1,
-    "description": "I lost a wallet matching this description.",
-    "media_files": []
-  }
-  ```
-- **Response**:
-  - **201 Created**:
-    ```json
-    {
-      "id": 1,
-      "found_item": 1,
-      "claimant": {
-        "id": 2,
-        "name": "Jane Doe",
-        "detail_url": "http://localhost:8000/api/accounts/2/"
-      },
-      "description": "I lost a wallet matching this description.",
-      "created_at": "2025-05-17T01:27:00Z",
-      "media": []
-    }
-    ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (validation errors, non-admin updating non-media fields):
     ```json
     {
       "error": {
-        "non_field_errors": ["You cannot claim your own found item."]
+        "name": ["Only media updates are allowed for non-admin users."]
       }
     }
     ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/found/claim/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "foundAXIS": 1,
-    "description": "I lost a wallet matching this description."
-  }'
-  ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Place not found or not approved."
+    }
+    ```
 
-### Lost Item Resolve
-- **Endpoint**: `/api/lostandfound/lost/<int:pk>/resolve/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Resolves an approved, unresolved lost item (only by the owner).
-- **Request Body**:
-  ```json
-  {
-    "status": "found",
-    "resolved_by": 2
-  }
-  ```
-- **Response**:
+### Place Delete
+- **Endpoint**: `DELETE /api/places/<int:pk>/delete/`
+- **Permission**: IsAuthenticated, PlaceOwnerOrAdminPermission
+- **Description**: Deletes a place if the user is the owner or an admin, and there are no child places.
+- **Responses**:
+  - **204 No Content**:
+    ```json
+    {
+      "message": "Place deleted successfully."
+    }
+    ```
+  - **400 Bad Request** (has child places):
+    ```json
+    {
+      "error": "Cannot delete place with child places. Delete all child places first or use recursive deletion."
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to delete this place."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Place not found."
+    }
+    ```
+
+### Place Recursive Delete
+- **Endpoint**: `DELETE /api/places/<int:pk>/recursive-delete/`
+- **Permission**: IsAuthenticated, UniversityAdminPermission
+- **Description**: Deletes a place and all its child places recursively.
+- **Responses**:
+  - **204 No Content**:
+    ```json
+    {
+      "message": "Place and all child places deleted successfully."
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to perform recursive deletion."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Place not found."
+    }
+    ```
+
+### Place Search
+- **Endpoint**: `GET /api/places/search/`
+- **Permission**: AllowAny
+- **Description**: Searches approved places by various criteria with pagination.
+- **Query Parameters**:
+  - `university`: University name
+  - `place_type`: Place type name
+  - `name`: Place name or university/academic unit short name
+  - `relative_location`: Location string
+  - `academic_unit`: Academic unit name
+  - `raw_query`: General search term (cannot combine with specific fields)
+  - `limit`: Number of results per page
+  - `offset`: Starting point for pagination
+- **Responses**:
   - **200 OK**:
     ```json
     {
-      "message": "Lost item resolved as 'found'."
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          /* Other fields as in Place List response */
+        }
+      ]
     }
     ```
-  - **400 Bad Request**:
+  - **400 Bad Request** (invalid query):
     ```json
     {
       "error": {
-        "non_field_errors": ["Resolved_by must be one of the claimants."]
+        "non_field_errors": ["Cannot use general search with specific fields (university, place_type, name, relative_location, academic_unit)."]
       }
     }
     ```
-  - **403 Forbidden**:
+  - **404 Not Found** (university/academic unit/place type not found):
     ```json
     {
-      "error": "Only the item owner can resolve this item."
+      "error": "University not found."
     }
     ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Lost item not found, not approved, or already resolved."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/lost/1/resolve/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "found",
-    "resolved_by": 2
-  }'
-  ```
 
-### Found Item Resolve
-- **Endpoint**: `/api/lostandfound/found/<int:pk>/resolve/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated
-- **Description**: Resolves an approved, unresolved found item (only by the owner).
-- **Request Body**:
-  ```json
-  {
-    "status": "returned",
-    "resolved_by": 2
-  }
-  ```
-- **Response**:
+### Place Type List
+- **Endpoint**: `GET /api/places/place-types/`
+- **Permission**: AllowAny
+- **Description**: Lists all place types.
+- **Responses**:
   - **200 OK**:
     ```json
-    {
-      "message": "Found item resolved as 'returned'."
-    }
-    ```
-  - **400 Bad Request**:
-    ```json
-    {
-      "error": {
-        "non_field_errors": ["Resolved_by must be one of the claimants."]
+    [
+      {
+        "id": "integer",
+        "name": "string"
       }
-    }
+    ]
     ```
-  - **403 Forbidden**:
-    ```json
-    {
-      "error": "Only the item owner can resolve this item."
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Found item not found, not approved, or already resolved."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/found/1/resolve/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "returned",
-    "resolved_by": 2
-  }'
-  ```
-
-### Lost Item Approve
-- **Endpoint**: `/api/lostandfound/lost/<int:pk>/approve/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated, UniversityAdminPermission
-- **Description**: Approves or rejects a lost item (only by authorized admins).
-- **Request Body**:
-  ```json
-  {
-    "approval_status": "approved"
-  }
-  ```
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "message": "Lost item 'Lost Wallet' approved."
-    }
-    ```
-  - **403 Forbidden**:
-    ```json
-    {
-      "error": "You do not have permission to approve this item."
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Lost item not found."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/lost/1/approve/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "approval_status": "approved"
-  }'
-  ```
-
-### Found Item Approve
-- **Endpoint**: `/api/lostandfound/found/<int:pk>/approve/`
-- **Method**: POST
-- **Permissions**: IsAuthenticated, UniversityAdminPermission
-- **Description**: Approves or rejects a found item (only by authorized admins).
-- **Request Body**:
-  ```json
-  {
-    "approval_status": "approved"
-  }
-  ```
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "message": "Found item 'Found Wallet' approved."
-    }
-    ```
-  - **403 Forbidden**:
-    ```json
-    {
-      "error": "You do not have permission to approve this item."
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Found item not found."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X POST http://localhost:8000/api/lostandfound/found/1/approve/ \
-  -H "Authorization: Token abc123token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "approval_status": "approved"
-  }'
-  ```
-
-### My Claims List
-- **Endpoint**: `/api/lostandfound/my-claims/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Lists all claims made by the authenticated user.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "lost_item": 1,
-          "claimant": {
-            "id": 2,
-            "name": "Jane Doe",
-            "detail_url": "http://localhost:8000/api/accounts/2/"
-          },
-          "description": "I believe this is my wallet, lost on May 15.",
-          "created_at": "2025-05-17T01:27:00Z",
-          "media": []
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/my-claims/ \
-  -H "Authorization: Token abc123token"
-  ```
-
-### My Posts List
-- **Endpoint**: `/api/lostandfound/my-posts/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Lists all lost and found posts created by the authenticated user.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": "http://localhost:8000/api/lostandfound/lost/1/resolve/",
-          "approve_url": null
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/my-posts/ \
-  -H "Authorization: Token abc123token"
-  ```
-
-### Lost Item Claims List
-- **Endpoint**: `/api/lostandfound/lost/<int:pk>/claims/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated, PostOwnerOrAdminPermission
-- **Description**: Lists all claims on a specific approved, unresolved lost item.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "lost_item": 1,
-          "claimant": {
-            "id": 2,
-            "name": "Jane Doe",
-            "detail_url": "http://localhost:8000/api/accounts/2/"
-          },
-          "description": "I believe this is my wallet, lost on May 15.",
-          "created_at": "2025-05-17T01:27:00Z",
-          "media": []
-        }
-      ]
-    }
-    ```
-  - **403 Forbidden**:
-    ```json
-    {
-      "error": "You do not have permission to view claims for this item."
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Lost item not found, not approved, or resolved."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/lost/1/claims/ \
-  -H "Authorization: Token abc123token"
-  ```
-
-### Found Item Claims List
-- **Endpoint**: `/api/lostandfound/found/<int:pk>/claims/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated, PostOwnerOrAdminPermission
-- **Description**: Lists all claims on a specific approved, unresolved found item.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "count": 1,
-      "next": null,
-      "previous": null,
-      "results": [
-        {
-          "id": 1,
-          "found_item": 1,
-          "claimant": {
-            "id": 2,
-            "name": "Jane Doe",
-            "detail_url": "http://localhost:8000/api/accounts/2/"
-          },
-          "description": "I lost a wallet matching this description.",
-          "created_at": "2025-05-17T01:27:00Z",
-          "media": []
-        }
-      ]
-    }
-    ```
-  - **403 Forbidden**:
-    ```json
-    {
-      "error": "You do not have permission to view claims for this item."
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "error": "Found item not found, not approved, or resolved."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/found/1/claims/ \
-  -H "Authorization: Token abc123token"
-  ```
-
-### History
-- **Endpoint**: `/api/lostandfound/history/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Retrieves the authenticated user's activity history (posts, claims made, claims received).
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "posts": [
-        {
-          "id": 1,
-          "user": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "title": "Lost Wallet",
-          "description": "Black leather wallet lost in library.",
-          "lost_date": "2025-05-15",
-          "approximate_time": "14:30:00",
-          "location": "Main Library",
-          "status": "open",
-          "approval_status": "approved",
-          "created_at": "2025-05-17T01:27:00Z",
-          "updated_at": "2025-05-17T01:27:00Z",
-          "media": [],
-          "post_type": "lost",
-          "is_admin": false,
-          "detail_url": "http://localhost:8000/api/lostandfound/lost/1/",
-          "claims_url": "http://localhost:8000/api/lostandfound/lost/1/claims/",
-          "resolve_url": "http://localhost:8000/api/lostandfound/lost/1/resolve/",
-          "approve_url": null
-        }
-      ],
-      "claims_made": [
-        {
-          "id": 1,
-          "found_item": 1,
-          "claimant": {
-            "id": 1,
-            "name": "John Doe",
-            "detail_url": "http://localhost:8000/api/accounts/1/"
-          },
-          "description": "I lost a wallet matching this description.",
-          "created_at": "2025-05-17T01:27:00Z",
-          "media": []
-        }
-      ],
-      "claims_received": [
-        {
-          "id": 1,
-          "lost_item": 1,
-          "claimant": {
-            "id": 2,
-            "name": "Jane Doe",
-            "detail_url": "http://localhost:8000/api/accounts/2/"
-          },
-          "description": "I believe this is my wallet, lost on May 15.",
-          "created_at": "2025-05-17T01:27:00Z",
-          "media": []
-        }
-      ]
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/history/ \
-  -H "Authorization: Token abc123token"
-  ```
 
 ### Media Access
-- **Endpoint**: `/api/lostandfound/media/<str:pk>/`
-- **Method**: GET
-- **Permissions**: IsAuthenticated
-- **Description**: Provides access to media files for authorized users (owners, claimants, or admins).
-- **Response**:
-  - **200 OK**: Returns the media file (e.g., image or video) with appropriate content type.
-  - **403 Forbidden**:
+- **Endpoint**: `GET /api/places/media/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves a media file for a place or place update, respecting approval status.
+- **Responses**:
+  - **200 OK**: Returns the file (content types: image/jpeg, image/png, video/mp4, video/quicktime)
+  - **403 Forbidden** (unapproved place/update, unauthorized access):
     ```json
     {
-      "error": "You do not have permission to access this media."
+      "error": "Media not accessible; place is not approved."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Media not found." | "Media file not found on server."
+    }
+    ```
+
+### Pending Place Updates
+- **Endpoint**: `GET /api/places/pending/`
+- **Permission**: IsAuthenticated, UniversityAdminPermission
+- **Description**: Lists pending place updates for the user's university (or all for app admins) with pagination.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          "place": "integer",
+          "university": "integer|null",
+          "academic_unit": "integer|null",
+          "parent": "integer|null",
+          "name": "string",
+          "description": "string",
+          "history": "string",
+          "establishment_year": "integer|null",
+          "place_type": "string",
+          "relative_location": "string",
+          "latitude": "float|null",
+          "longitude": "float|null",
+          "maps_link": "string",
+          "created_at": "string",
+          "updated_at": "string",
+          "updated_by": {"id": "integer", "name": "string", "detail_url": "string"},
+          "media": [{"id": "integer", "file_url": "string", "uploaded_at": "string", "next_media_url": "string|null", "previous_media_url": "string|null"}],
+          "approval_status": "string",
+          "university_root": "boolean",
+          "academic_unit_root": "boolean",
+          "detail_url": "string",
+          "approval_url": "string"
+        }
+      ]
+    }
+    ```
+
+### Place Update Detail
+- **Endpoint**: `GET /api/places/updates/<int:pk>/`
+- **Permission**: IsAuthenticated
+- **Description**: Retrieves details of a place update (accessible to the submitter or admins).
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "original": { /* Place data as in Place List response */ },
+      "update": { /* Place update data as in Pending Place Updates response */ }
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to view this update."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Place update not found."
+    }
+    ```
+
+### Place Update Approval
+- **Endpoint**: `POST /api/places/updates/<int:pk>/approve/`
+- **Permission**: IsAuthenticated, UniversityAdminPermission
+- **Description**: Approves or rejects a place update, applying changes if approved.
+- **Request Body**:
+  ```json
+  {
+    "approval_status": "string (approved|rejected)"
+  }
+  ```
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "message": "Place update 'Place Name' approved." | "Place update 'Place Name' rejected."
+    }
+    ```
+  - **400 Bad Request** (invalid status):
+    ```json
+    {
+      "error": "Invalid approval_status. Use 'approved' or 'rejected'."
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to approve this update."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Place update not found."
+    }
+    ```
+
+## Lost and Found
+
+### Lost Item List/Create
+- **Endpoint**: `GET /api/lostandfound/lost/` | `POST /api/lostandfound/lost/`
+- **Permission**: GET: AllowAny, POST: IsAuthenticated
+- **Description**: Lists approved lost/found items or creates a new item (multipart for media uploads).
+- **Query Parameters (GET)**:
+  - `status`: Filter by status (lost|found|resolved)
+  - `limit`: Number of results per page
+  - `offset`: Starting point for pagination
+- **Request Body (POST)**:
+  ```json
+  {
+    "title": "string",
+    "description": "string",
+    "university": "integer",
+    "lost_date": "string (YYYY-MM-DD)",
+    "location": "string",
+    "status": "string (lost|found)",
+    "media_files": ["file (jpg, jpeg, png, max 10MB)"]
+  }
+  ```
+- **Responses**:
+  - **GET 200 OK**:
+    ```json
+    {
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          "title": "string",
+          "description": "string",
+          "user": {"id": "integer", "name": "string", "detail_url": "string"},
+          "university": {"id": "integer", "name": "string"},
+          "lost_date": "string",
+          "location": "string",
+          "status": "string",
+          "approval_status": "string",
+          "created_at": "string",
+          "updated_at": "string",
+          "resolved_by": {"id": "integer", "name": "string", "detail_url": "string"}|null,
+          "media": [{"id": "integer", "file_url": "string", "uploaded_at": "string"}]
+        }
+      ]
+    }
+    ```
+  - **POST 201 Created**:
+    ```json
+    {
+      "id": "integer",
+      /* Other fields as above */
+    }
+    ```
+  - **POST 400 Bad Request** (validation errors):
+    ```json
+    {
+      "lost_date": ["Lost date cannot be in the future."]
+    }
+    ```
+
+### Lost Item Detail
+- **Endpoint**: `GET /api/lostandfound/lost/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves details of an approved lost/found item.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "id": "integer",
+      /* Other fields as in Lost Item List response */
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Item not found, not approved, or resolved."
+    }
+    ```
+
+### Lost Item Claim
+- **Endpoint**: `POST /api/lostandfound/lost/<int:pk>/claim/`
+- **Permission**: IsAuthenticated
+- **Description**: Allows a user to claim a lost item (cannot claim own item).
+- **Request Body**:
+  ```json
+  {
+    "message": "string"
+  }
+  ```
+- **Responses**:
+  - **201 Created**:
+    ```json
+    {
+      "id": "integer",
+      "lost_item": "integer",
+      "claimant": {"id": "integer", "name": "string", "detail_url": "string"},
+      "message": "string",
+      "created_at": "string"
+    }
+    ```
+  - **400 Bad Request** (claiming own item, invalid data):
+    ```json
+    {
+      "error": "You cannot claim your own item."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Item not found, not approved, or resolved."
+    }
+    ```
+
+### Lost Item Resolve
+- **Endpoint**: `POST /api/lostandfound/lost/<int:pk>/resolve/`
+- **Permission**: IsAuthenticated, UniversityAdminPermission
+- **Description**: Resolves a lost item by linking it to a claim.
+- **Request Body**:
+  ```json
+  {
+    "claim_id": "integer"
+  }
+  ```
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "message": "Item resolved successfully."
+    }
+    ```
+  - **400 Bad Request** (invalid claim):
+    ```json
+    {
+      "error": "Invalid claim ID."
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to resolve this item."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Item not found."
+    }
+    ```
+
+### Lost Item Approve
+- **Endpoint**: `POST /api/lostandfound/lost/<int:pk>/approve/`
+- **Permission**: IsAuthenticated, UniversityAdminPermission
+- **Description**: Approves a pending lost/found item.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "message": "Item approved successfully."
+    }
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to approve this item."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Item not found."
+    }
+    ```
+
+### My Claims List
+- **Endpoint**: `GET /api/lostandfound/my-claims/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists claims made by the authenticated user with pagination.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          "lost_item": {
+            "id": "integer",
+            "title": "string",
+            /* Other item fields */
+          },
+          "claimant": {"id": "integer", "name": "string", "detail_url": "string"},
+          "message": "string",
+          "created_at": "string"
+        }
+      ]
+    }
+    ```
+
+### My Posts List
+- **Endpoint**: `GET /api/lostandfound/my-posts/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists items posted by the authenticated user with pagination.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          /* Other fields as in Lost Item List response */
+        }
+      ]
+    }
+    ```
+
+### Lost Item Claims List
+- **Endpoint**: `GET /api/lostandfound/lost/<int:pk>/claims/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists claims for a lost item (accessible to the item owner or admins).
+- **Responses**:
+  - **200 OK**:
+    ```json
+    [
+      {
+        "id": "integer",
+        "lost_item": "integer",
+        "claimant": {"id": "integer", "name": "string", "detail_url": "string"},
+        "message": "string",
+        "created_at": "string"
+      }
+    ]
+    ```
+  - **403 Forbidden** (no permission):
+    ```json
+    {
+      "error": "You do not have permission to view claims for this item."
+    }
+    ```
+  - **404 Not Found**:
+    ```json
+    {
+      "error": "Item not found, not approved, or resolved."
+    }
+    ```
+
+### History
+- **Endpoint**: `GET /api/lostandfound/history/`
+- **Permission**: IsAuthenticated
+- **Description**: Lists the authenticated user's claims and posts with pagination.
+- **Responses**:
+  - **200 OK**:
+    ```json
+    {
+      "count": "integer",
+      "next": "string|null",
+      "previous": "string|null",
+      "results": [
+        {
+          "id": "integer",
+          "title": "string",
+          /* Other item fields */
+          "claim": {
+            "id": "integer",
+            "message": "string",
+            "created_at": "string"
+          }|null
+        }
+      ]
+    }
+    ```
+
+### Media Access (Lost and Found)
+- **Endpoint**: `GET /api/lostandfound/media/<int:pk>/`
+- **Permission**: AllowAny
+- **Description**: Retrieves a media file for a lost/found item, accessible to the owner, admins, or if the item is approved.
+- **Responses**:
+  - **200 OK**: Returns the file (content types: image/jpeg, image/png)
+  - **403 Forbidden** (unapproved item, unauthorized access):
+    ```json
+    {
+      "error": "Media not accessible; item is not approved or you lack permission."
     }
     ```
   - **404 Not Found**:
@@ -1865,224 +1412,12 @@ This document outlines the API endpoints for the **Campus Connect** application,
       "error": "Media not found."
     }
     ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/lostandfound/media/abc123media/ \
-  -H "Authorization: Token abc123token"
-  ```
-
----
-
-## Universities API
-
-### University List
-- **Endpoint**: `/api/universities/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a list of all universities.
-- **Response**:
-  - **200 OK**:
-    ```json
-    [
-      {
-        "id": 1,
-        "name": "Example University",
-        "short_name": "EU"
-      }
-    ]
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/
-  ```
-
-### Department List
-- **Endpoint**: `/api/universities/departments/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a list of all departments.
-- **Response**:
-  - **200 OK**:
-    ```json
-    [
-      {
-        "id": 1,
-        "name": "Department of Computer Science",
-        "short_name": "CS",
-        "unit_type": "department",
-        "university": {
-          "id": 1,
-          "name": "Example University",
-          "short_name": "EU"
-        }
-      }
-    ]
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/departments/
-  ```
-
-### Institute List
-- **Endpoint**: `/api/universities/institutes/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a list of all institutes.
-- **Response**:
-  - **200 OK**:
-    ```json
-    [
-      {
-        "id": 2,
-        "name": "Institute of Technology",
-        "short_name": "IT",
-        "unit_type": "institute",
-        "university": {
-          "id": 1,
-          "name": "Example University",
-          "short_name": "EU"
-        }
-      }
-    ]
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/institutes/
-  ```
-
-### Teacher Designation List
-- **Endpoint**: `/api/universities/teacher-designations/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves a list of all teacher designations.
-- **Response**:
-  - **200 OK**:
-    ```json
-    [
-      {
-        "id": 1,
-        "name": "Professor"
-      },
-      {
-        "id": 2,
-        "name": "Associate Professor"
-      }
-    ]
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/teacher-designations/
-  ```
-
-### Department and Institute List
-- **Endpoint**: `/api/universities/departments-institutes/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves departments and institutes, optionally filtered by university short name.
-- **Query Parameters**:
-  - `name`: University short name (e.g., `EU`)
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "departments": [
-        {
-          "id": 1,
-          "name": "Department of Computer Science",
-          "short_name": "CS",
-          "unit_type": "department",
-          "university": {
-            "id": 1,
-            "name": "Example University",
-            "short_name": "EU"
-          }
-        }
-      ],
-      "institutes": [
-        {
-          "id": 2,
-          "name": "Institute of Technology",
-          "short_name": "IT",
-          "unit_type": "institute",
-          "university": {
-            "id": 1,
-            "name": "Example University",
-            "short_name": "EU"
-          }
-        }
-      ]
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "message": "University not found."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/departments-institutes/?name=EU
-  ```
-
-### University Users
-- **Endpoint**: `/api/universities/<str:university_short_name>/users/`
-- **Method**: GET
-- **Permissions**: AllowAny
-- **Description**: Retrieves users associated with a specific university, categorized by role.
-- **Response**:
-  - **200 OK**:
-    ```json
-    {
-      "students": [
-        {
-          "id": 1,
-          "name": "John Doe",
-          "role": "student",
-          "admin_level": "none",
-          "university": {
-            "name": "Example University",
-            "short_name": "EU"
-          },
-          "academic_unit": {
-            "name": "Department of Computer Science",
-            "short_name": "CS",
-            "unit_type": "department"
-          },
-          "detail_url": "http://localhost:8000/api/accounts/1/"
-        }
-      ],
-      "teachers": [],
-      "officers": [],
-      "staff": []
-    }
-    ```
-  - **404 Not Found**:
-    ```json
-    {
-      "message": "University not found."
-    }
-    ```
-- **Example**:
-  ```bash
-  curl -X GET http://localhost:8000/api/universities/EU/users/
-  ```
-
----
-
-## Authentication
-
-- **Token Authentication**: Most endpoints requiring `IsAuthenticated` permission expect an `Authorization` header with a token obtained from the `/api/accounts/login/` endpoint.
-  - Format: `Authorization: Token <token>`
-- **Permissions**:
-  - `AllowAny`: Accessible to all users, including unauthenticated ones.
-  - `IsAuthenticated`: Requires a valid token.
-  - `AdminPermission`: Requires the user to have `university` or `app` admin level.
-  - `UniversityAdminPermission`: Requires the user to be an admin for the specific university associated with the resource.
-  - `PostOwnerOrAdminPermission`: Requires the user to be the resource owner or an authorized admin.
 
 ## Notes
+- **Validation**: The API enforces strict validation (e.g., academic unit must belong to the selected university, dates cannot be in the future).
+- **Media Uploads**: Supported file types are jpg, jpeg, png (for lost and found, places) and mp4, mov (for places). Maximum file size is 10MB.
+- **Pagination**: Used in list endpoints with `limit` and `offset` parameters.
+- **Permissions**: Admin-level permissions (`university` or `app`) are required for actions like approving updates or resolving items.
+- **Error Handling**: Detailed error messages are provided for validation failures, permission issues, and resource not found cases.
 
-- All dates and times are in ISO 8601 format (e.g., `2025-05-17T01:27:00Z` for datetimes, `2025-05-15` for dates, `14:30:00` for times).
-- Media files (for lost and found items/claims) are uploaded via multipart form data and accessed via the `/api/lostandfound/media/<str:pk>/` endpoint.
-- Pagination is supported for list endpoints using `limit` and `offset` query parameters.
-- Error responses typically include a `message` or `error` field with details.
+This documentation covers all endpoints and cases based on the provided code. For further clarification or additional endpoints, please provide details.
